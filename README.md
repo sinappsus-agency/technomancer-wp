@@ -58,6 +58,16 @@ Headers for n8n callback requests:
 - `X-SINAPPSUS-Signature: HMAC_SHA256(raw_body, signing_secret)` when a signing secret is configured
 - `Origin: https://your-n8n-domain.example` when you use trusted origins
 
+Recommended n8n HTTP Request node setup:
+
+- `Method`: `GET` for reads and searches, `POST` for writes
+- `URL`: `https://your-site.example/wp-json/sinappsus-n8n/v1/...`
+- `Authentication`: none inside n8n, send the bearer token manually as a header
+- `Send Headers`: enabled
+- `Send Body`: enabled only for POST routes, using JSON mode
+- `Authorization` header value: `Bearer YOUR_API_TOKEN`
+- `X-SINAPPSUS-Signature` header value: HMAC-SHA256 of the exact raw JSON body when a signing secret is configured
+
 Endpoints n8n should call:
 
 - `GET /entity/{type}/{id}` to read one user, post, page, attachment, or order

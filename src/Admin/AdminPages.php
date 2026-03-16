@@ -446,6 +446,9 @@ final class AdminPages
         $token = (string) ($settings['api_token'] ?? '');
         $secret = (string) ($settings['signing_secret'] ?? '');
         $trustedOrigins = isset($settings['trusted_origins']) && is_array($settings['trusted_origins']) ? $settings['trusted_origins'] : [];
+        $maskedToken = $token !== '' ? $token : 'YOUR_API_TOKEN';
+        $maskedSecret = $secret !== '' ? $secret : 'YOUR_SIGNING_SECRET';
+        $originExample = ! empty($trustedOrigins) ? (string) $trustedOrigins[0] : 'https://your-n8n-domain.example';
         ?>
         <div class="wrap">
             <h1>API Access</h1>
@@ -458,7 +461,7 @@ final class AdminPages
             <?php $this->renderHelpBox('Start Here For n8n', [
                 'Base callback URL: ' . $apiBase,
                 'Use the HTTP Request node in n8n for all callback calls into WordPress.',
-                'Every callback request should send Authorization: Bearer ' . ($token !== '' ? $token : 'YOUR_API_TOKEN'),
+                'Every callback request should send Authorization: Bearer ' . $maskedToken,
                 'If a signing secret is set, calculate X-SINAPPSUS-Signature as HMAC-SHA256 of the raw request body using that secret.',
                 empty($trustedOrigins) ? 'Trusted Origins is currently optional because none are configured.' : 'If your n8n instance sends an Origin header, it must match one of the trusted origins listed below.',
             ]); ?>
@@ -492,7 +495,64 @@ final class AdminPages
 
             <h2>Base Callback URL</h2>
             <p class="description">This is the base path n8n should call for plugin API operations.</p>
-            <textarea readonly class="large-text code" rows="2"><?php echo esc_textarea($apiBase); ?></textarea>
+            <?php $this->renderCopyableBlock('Base callback URL', $apiBase, 2); ?>
+
+            <h2>n8n HTTP Request Node Setup</h2>
+            <?php $this->renderHelpBox('Recommended Node Configuration', [
+                'Method: choose GET or POST to match the endpoint below.',
+                'URL: start with the base callback URL and append the endpoint path.',
+                'Authentication: none in n8n itself. Send the bearer token manually as a header.',
+                'Send Headers: on. Add Authorization and, when used, X-SINAPPSUS-Signature and Origin.',
+                'Send Body: on for POST requests only. Use JSON mode.',
+                'If you enforce a signing secret, generate the HMAC from the exact raw JSON body before the request is sent.',
+            ]); ?>
+            <table class="widefat striped" style="max-width:1100px;">
+                <thead>
+                    <tr>
+                        <th>n8n Field</th>
+                        <th>What To Put There</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>URL</td>
+                        <td><code><?php echo esc_html($apiBase); ?>/...</code></td>
+                    </tr>
+                    <tr>
+                        <td>Method</td>
+                        <td><code>GET</code> for reads and searches, <code>POST</code> for writes such as meta updates and order notes.</td>
+                    </tr>
+                    <tr>
+                        <td>Send Headers</td>
+                        <td>Enable it and add the headers shown below.</td>
+                    </tr>
+                    <tr>
+                        <td>Authorization Header</td>
+                        <td><code>Bearer <?php echo esc_html($maskedToken); ?></code></td>
+                    </tr>
+                    <tr>
+                        <td>Content-Type Header</td>
+                        <td><code>application/json</code> for POST requests.</td>
+                    </tr>
+                    <tr>
+                        <td>X-SINAPPSUS-Signature Header</td>
+                        <td><code>HMAC_SHA256(raw_body, <?php echo esc_html($maskedSecret); ?>)</code> when signing is enabled.</td>
+                    </tr>
+                    <tr>
+                        <td>Origin Header</td>
+                        <td><code><?php echo esc_html($originExample); ?></code> when you want the request to match a configured trusted origin.</td>
+                    </tr>
+                    <tr>
+                        <td>Body Content Type</td>
+                        <td><code>JSON</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Copy-Ready Header Values</h3>
+            <?php $this->renderCopyableBlock('Authorization header value', 'Bearer ' . $maskedToken, 2); ?>
+            <?php $this->renderCopyableBlock('Origin header example', $originExample, 2); ?>
+            <?php $this->renderCopyableBlock('Signature pseudo logic', "signature = HMAC_SHA256(raw_request_body, {$maskedSecret})\nheader['X-SINAPPSUS-Signature'] = signature", 4); ?>
 
             <h2>Headers Required From n8n</h2>
             <table class="widefat striped" style="max-width:1100px;">
@@ -508,7 +568,7 @@ final class AdminPages
                     <tr>
                         <td><code>Authorization</code></td>
                         <td>Yes</td>
-                        <td><code>Bearer <?php echo esc_html($token !== '' ? $token : 'YOUR_API_TOKEN'); ?></code></td>
+                        <td><code>Bearer <?php echo esc_html($maskedToken); ?></code></td>
                         <td>Authenticates the request as an approved caller.</td>
                     </tr>
                     <tr>
@@ -546,19 +606,28 @@ final class AdminPages
 
             <h3>1. Read A User From n8n</h3>
             <p class="description">Use this when a webhook flow contains a WordPress user ID and you want the latest profile data before continuing in n8n.</p>
-            <?php $this->renderCodeBlock("GET {$apiBase}/entity/user/123\nAuthorization: Bearer {$token}\nX-SINAPPSUS-Signature: <signature of empty body if your secret is enabled>"); ?>
+            <?php $this->renderCopyableBlock('Read a user request example', "GET {$apiBase}/entity/user/123\nAuthorization: Bearer {$maskedToken}\nX-SINAPPSUS-Signature: <signature of empty body if your secret is enabled>", 5); ?>
+
+            <h4>HTTP Request Node Example</h4>
+            <?php $this->renderCopyableBlock('Read a user node configuration', "Method: GET\nURL: {$apiBase}/entity/user/123\nHeaders:\n  Authorization: Bearer {$maskedToken}\n  X-SINAPPSUS-Signature: <signature if enabled>\n  Origin: {$originExample}", 8); ?>
 
             <h3>2. Search For An Order Or Post</h3>
             <p class="description">Use this when n8n only has a partial term such as an email, title fragment, or order reference and needs WordPress to perform the lookup.</p>
-            <?php $this->renderCodeBlock("GET {$apiBase}/search?type=order&term=smith&limit=10\nAuthorization: Bearer {$token}\nX-SINAPPSUS-Signature: <signature of empty body if your secret is enabled>"); ?>
+            <?php $this->renderCopyableBlock('Search request example', "GET {$apiBase}/search?type=order&term=smith&limit=10\nAuthorization: Bearer {$maskedToken}\nX-SINAPPSUS-Signature: <signature of empty body if your secret is enabled>", 5); ?>
 
             <h3>3. Update Meta After An External Step</h3>
             <p class="description">Use this to store external IDs, processing flags, CRM status, or sync markers back onto a WordPress entity.</p>
-            <?php $this->renderCodeBlock("POST {$apiBase}/action/meta\nContent-Type: application/json\nAuthorization: Bearer {$token}\nX-SINAPPSUS-Signature: <signature of raw JSON body>\n\n{\n  \"entity_type\": \"order\",\n  \"entity_id\": 1234,\n  \"meta_key\": \"external_invoice_id\",\n  \"meta_value\": \"INV-9001\"\n}"); ?>
+            <?php $this->renderCopyableBlock('Update meta request example', "POST {$apiBase}/action/meta\nContent-Type: application/json\nAuthorization: Bearer {$maskedToken}\nX-SINAPPSUS-Signature: <signature of raw JSON body>\n\n{\n  \"entity_type\": \"order\",\n  \"entity_id\": 1234,\n  \"meta_key\": \"external_invoice_id\",\n  \"meta_value\": \"INV-9001\"\n}", 12); ?>
+
+            <h4>Meta Update JSON Body Preset</h4>
+            <?php $this->renderCopyableBlock('Meta update body preset', "{\n  \"entity_type\": \"order\",\n  \"entity_id\": 1234,\n  \"meta_key\": \"external_invoice_id\",\n  \"meta_value\": \"INV-9001\"\n}", 8); ?>
 
             <h3>4. Add An Order Note</h3>
             <p class="description">Use this when n8n wants to record fulfillment, ERP, or support activity on a WooCommerce order.</p>
-            <?php $this->renderCodeBlock("POST {$apiBase}/action/order-note\nContent-Type: application/json\nAuthorization: Bearer {$token}\nX-SINAPPSUS-Signature: <signature of raw JSON body>\n\n{\n  \"order_id\": 1234,\n  \"note\": \"ERP invoice created successfully.\",\n  \"customer_note\": false\n}"); ?>
+            <?php $this->renderCopyableBlock('Order note request example', "POST {$apiBase}/action/order-note\nContent-Type: application/json\nAuthorization: Bearer {$maskedToken}\nX-SINAPPSUS-Signature: <signature of raw JSON body>\n\n{\n  \"order_id\": 1234,\n  \"note\": \"ERP invoice created successfully.\",\n  \"customer_note\": false\n}", 12); ?>
+
+            <h4>Order Note JSON Body Preset</h4>
+            <?php $this->renderCopyableBlock('Order note body preset', "{\n  \"order_id\": 1234,\n  \"note\": \"ERP invoice created successfully.\",\n  \"customer_note\": false\n}", 7); ?>
 
             <h2>What n8n Should Not Use</h2>
             <p class="description">These endpoints are present for site administrators inside WordPress, not for bearer-token callback use from n8n.</p>
@@ -570,7 +639,8 @@ final class AdminPages
 
             <h2>Signing Reference</h2>
             <p class="description">When a signing secret is configured, hash the exact raw request body with HMAC-SHA256 and send the result in <code>X-SINAPPSUS-Signature</code>. For GET requests the raw body is empty.</p>
-            <?php $this->renderCodeBlock("Pseudo logic\nsignature = HMAC_SHA256(raw_request_body, SIGNING_SECRET)\nheader['X-SINAPPSUS-Signature'] = signature"); ?>
+            <?php $this->renderCopyableBlock('Signing pseudo logic', "Pseudo logic\nsignature = HMAC_SHA256(raw_request_body, SIGNING_SECRET)\nheader['X-SINAPPSUS-Signature'] = signature", 5); ?>
+            <?php $this->renderCopyScript(); ?>
         </div>
         <?php
     }
@@ -1198,6 +1268,59 @@ final class AdminPages
     {
         ?>
         <textarea readonly class="large-text code" rows="10" style="max-width:1100px;"><?php echo esc_textarea($content); ?></textarea>
+        <?php
+    }
+
+    private function renderCopyableBlock(string $label, string $content, int $rows = 6): void
+    {
+        static $copyableIndex = 0;
+        $copyableIndex++;
+        $textareaId = 'snc-copyable-' . $copyableIndex;
+        ?>
+        <div style="max-width:1100px;margin:0 0 16px;">
+            <p style="margin:0 0 6px;font-weight:600;"><?php echo esc_html($label); ?></p>
+            <div style="display:flex;gap:8px;align-items:flex-start;">
+                <textarea id="<?php echo esc_attr($textareaId); ?>" readonly class="large-text code" rows="<?php echo esc_attr((string) $rows); ?>" style="max-width:100%;"><?php echo esc_textarea($content); ?></textarea>
+                <button type="button" class="button button-secondary snc-copy-button" data-target="<?php echo esc_attr($textareaId); ?>">Copy</button>
+            </div>
+        </div>
+        <?php
+    }
+
+    private function renderCopyScript(): void
+    {
+        ?>
+        <script>
+        (function () {
+            function copyText(targetId, button) {
+                var element = document.getElementById(targetId);
+                if (!element) {
+                    return;
+                }
+
+                element.focus();
+                element.select();
+                element.setSelectionRange(0, element.value.length);
+
+                try {
+                    document.execCommand('copy');
+                    var original = button.textContent;
+                    button.textContent = 'Copied';
+                    window.setTimeout(function () {
+                        button.textContent = original;
+                    }, 1200);
+                } catch (error) {
+                    button.textContent = 'Copy failed';
+                }
+            }
+
+            document.querySelectorAll('.snc-copy-button').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    copyText(button.getAttribute('data-target'), button);
+                });
+            });
+        })();
+        </script>
         <?php
     }
 }
