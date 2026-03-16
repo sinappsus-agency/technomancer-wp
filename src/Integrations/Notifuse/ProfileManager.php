@@ -4,13 +4,18 @@ declare(strict_types=1);
 
 namespace Sinappsus\N8nConnector\Integrations\Notifuse;
 
+use Sinappsus\N8nConnector\Flows\Logger;
+
 final class ProfileManager
 {
     private Client $client;
 
-    public function __construct(Client $client)
+    private Logger $logger;
+
+    public function __construct(Client $client, Logger $logger)
     {
         $this->client = $client;
+        $this->logger = $logger;
     }
 
     public function register(): void
@@ -98,6 +103,7 @@ final class ProfileManager
             'show_lists' => '0',
             'consent_text' => '',
             'consent_required' => '',
+            'redirect_url' => '',
         ], $attributes);
 
         return $this->renderForm(
@@ -106,24 +112,40 @@ final class ProfileManager
             (string) $attributes['list_ids'],
             filter_var($attributes['show_lists'], FILTER_VALIDATE_BOOLEAN),
             (string) $attributes['consent_text'],
-            (string) $attributes['consent_required']
+            (string) $attributes['consent_required'],
+            (string) $attributes['redirect_url']
         );
     }
 
     public function renderUnsubscribeForm(array $attributes = []): string
     {
-        $attributes = shortcode_atts(['button_text' => 'Unsubscribe'], $attributes);
+        $attributes = shortcode_atts([
+            'button_text' => 'Unsubscribe',
+            'redirect_url' => '',
+        ], $attributes);
 
-        return $this->renderForm('unsubscribe', (string) $attributes['button_text'], '');
+        return $this->renderForm('unsubscribe', (string) $attributes['button_text'], '', false, '', '', (string) $attributes['redirect_url']);
     }
 
     public function handleSubscribe(): void
     {
-        check_ajax_referer('snc_notifuse_form', 'nonce');
+        if (! $this->validateAjaxNonce('subscribe')) {
+            return;
+        }
 
         $email = sanitize_email((string) ($_POST['email'] ?? ''));
         $firstName = sanitize_text_field((string) ($_POST['first_name'] ?? ''));
         $lastName = sanitize_text_field((string) ($_POST['last_name'] ?? ''));
+        if ($email === '') {
+            $this->logger->log([
+                'event_key' => 'notifuse.form.subscribe',
+                'entity_type' => 'contact',
+                'status' => 'integration_failed',
+                'message' => 'Email address is required.',
+            ]);
+            wp_send_json(['success' => false, 'message' => 'Email address is required.'], 400);
+        }
+
         $listIds = [];
         if (isset($_POST['list_ids'])) {
             if (is_array($_POST['list_ids'])) {
@@ -142,34 +164,107 @@ final class ProfileManager
             'consent_text' => sanitize_text_field((string) ($_POST['consent_text'] ?? '')),
         ]);
 
+        $this->logger->log([
+            'event_key' => 'notifuse.form.subscribe',
+            'entity_type' => 'contact',
+            'status' => ! empty($result['success']) ? 'integration_sent' : 'integration_failed',
+            'message' => $result['message'] ?? 'Subscribe request completed.',
+            'response_code' => isset($result['code']) ? (int) $result['code'] : null,
+            'payload' => [
+                'email' => $email,
+                'list_ids' => $listIds,
+            ],
+        ]);
+
         wp_send_json($result, $result['success'] ? 200 : 400);
     }
 
     public function handleUnsubscribe(): void
     {
-        check_ajax_referer('snc_notifuse_form', 'nonce');
+        if (! $this->validateAjaxNonce('unsubscribe')) {
+            return;
+        }
 
         $email = sanitize_email((string) ($_POST['email'] ?? ''));
+        if ($email === '') {
+            $this->logger->log([
+                'event_key' => 'notifuse.form.unsubscribe',
+                'entity_type' => 'contact',
+                'status' => 'integration_failed',
+                'message' => 'Email address is required.',
+            ]);
+            wp_send_json(['success' => false, 'message' => 'Email address is required.'], 400);
+        }
+
         $result = $this->client->unsubscribeEmail($email);
+
+        $this->logger->log([
+            'event_key' => 'notifuse.form.unsubscribe',
+            'entity_type' => 'contact',
+            'status' => ! empty($result['success']) ? 'integration_sent' : 'integration_failed',
+            'message' => $result['message'] ?? 'Unsubscribe request completed.',
+            'response_code' => isset($result['code']) ? (int) $result['code'] : null,
+            'payload' => [
+                'email' => $email,
+            ],
+        ]);
 
         wp_send_json($result, $result['success'] ? 200 : 400);
     }
 
-    private function renderForm(string $action, string $buttonText, string $listIds, bool $showLists = false, string $consentText = '', string $consentRequired = ''): string
+    private function validateAjaxNonce(string $action): bool
+    {
+        $nonce = isset($_POST['nonce']) ? sanitize_text_field((string) $_POST['nonce']) : '';
+
+        if ($nonce !== '' && wp_verify_nonce($nonce, 'snc_notifuse_form')) {
+            return true;
+        }
+
+        $this->logger->log([
+            'event_key' => 'notifuse.form.' . $action,
+            'entity_type' => 'contact',
+            'status' => 'security_failed',
+            'message' => 'Invalid or expired frontend form nonce.',
+        ]);
+        wp_send_json(['success' => false, 'message' => 'This form expired. Refresh the page and try again.'], 403);
+
+        return false;
+    }
+
+    private function renderForm(string $action, string $buttonText, string $listIds, bool $showLists = false, string $consentText = '', string $consentRequired = '', string $redirectUrl = ''): string
     {
         $ajaxAction = $action === 'unsubscribe' ? 'snc_notifuse_unsubscribe' : 'snc_notifuse_subscribe';
         $settings = \Sinappsus\N8nConnector\Core\Settings::get('notifuse', []);
         $configuredLists = $this->client->getConfiguredFormLists();
         $defaultListIds = array_values(array_filter(array_map('trim', explode(',', $listIds))));
+        $configuredDefaultListId = sanitize_text_field((string) ($settings['default_list_id'] ?? ''));
+        $redirectUrl = esc_url_raw(trim($redirectUrl));
+
+        if (empty($defaultListIds) && $configuredDefaultListId !== '') {
+            $defaultListIds = [$configuredDefaultListId];
+        }
+
+        if ($action !== 'unsubscribe' && ! $showLists && empty($defaultListIds)) {
+            if (count($configuredLists) === 1) {
+                $singleListId = (string) ($configuredLists[0]['id'] ?? $configuredLists[0]['uuid'] ?? '');
+                if ($singleListId !== '') {
+                    $defaultListIds = [$singleListId];
+                }
+            } elseif (count($configuredLists) > 1) {
+                $showLists = true;
+            }
+        }
+
+        $resolvedListIds = implode(',', $defaultListIds);
         $resolvedConsentText = $consentText !== '' ? $consentText : (string) ($settings['consent_label'] ?? 'I agree to receive updates by email.');
         $requiresConsent = $consentRequired === '' ? ! empty($settings['require_consent']) : filter_var($consentRequired, FILTER_VALIDATE_BOOLEAN);
         ob_start();
         ?>
-        <form class="snc-notifuse-form" method="post" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>">
+        <form class="snc-notifuse-form" method="post" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"<?php echo $redirectUrl !== '' ? ' data-success-redirect="' . esc_url($redirectUrl) . '"' : ''; ?>>
             <input type="hidden" name="action" value="<?php echo esc_attr($ajaxAction); ?>" />
             <input type="hidden" name="nonce" value="<?php echo esc_attr(wp_create_nonce('snc_notifuse_form')); ?>" />
-            <?php if ($action !== 'unsubscribe' && ! $showLists && $listIds !== '') : ?>
-                <input type="hidden" name="list_ids" value="<?php echo esc_attr($listIds); ?>" />
+            <?php if ($action !== 'unsubscribe' && ! $showLists && $resolvedListIds !== '') : ?>
+                <input type="hidden" name="list_ids" value="<?php echo esc_attr($resolvedListIds); ?>" />
             <?php endif; ?>
             <p><input type="email" name="email" placeholder="Email" required /></p>
             <?php if ($action !== 'unsubscribe') : ?>
@@ -186,6 +281,8 @@ final class ProfileManager
                             </label>
                         <?php endforeach; ?>
                     </fieldset>
+                <?php elseif ($action !== 'unsubscribe' && $resolvedListIds === '') : ?>
+                    <p class="snc-notifuse-status is-error">No Notifuse list is currently available for this form. Set a fallback list ID or expose selectable lists in the plugin settings.</p>
                 <?php endif; ?>
                 <?php if ($resolvedConsentText !== '') : ?>
                     <label class="snc-notifuse-consent">

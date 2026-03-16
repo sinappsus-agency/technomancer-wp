@@ -42,10 +42,16 @@ final class Client
 
         $code = (int) wp_remote_retrieve_response_code($response);
 
-        return [
+        $result = [
             'success' => $code >= 200 && $code < 300,
             'message' => $code >= 200 && $code < 300 ? 'Notifuse connection succeeded.' : 'Notifuse connection failed with HTTP ' . $code . '.',
         ];
+
+        if ($result['success']) {
+            $this->getLists(true);
+        }
+
+        return $result;
     }
 
     public function subscribeUserById(int $userId, string $source): void
@@ -98,14 +104,42 @@ final class Client
             return $this->listsCache;
         }
 
-        $response = $this->request('GET', '/api/lists');
-        if (! $response['success']) {
-            return [];
+        $settings = Settings::get('notifuse', []);
+        $workspaceId = $this->normalizeWorkspaceId((string) ($settings['workspace_id'] ?? ''));
+        $paths = [];
+
+        if ($workspaceId !== '') {
+            $paths[] = '/api/lists.list?workspace_id=' . rawurlencode($workspaceId);
+            $paths[] = '/api/lists?workspace_id=' . rawurlencode($workspaceId);
         }
 
-        $body = is_array($response['body']) ? $response['body'] : [];
-        $lists = isset($body['data']) && is_array($body['data']) ? $body['data'] : $body;
-        $this->listsCache = is_array($lists) ? $lists : [];
+        $paths[] = '/api/lists.list';
+        $paths[] = '/api/lists';
+
+        foreach ($paths as $path) {
+            $response = $this->request('GET', $path);
+            if (! $response['success']) {
+                continue;
+            }
+
+            $lists = $this->extractListsFromResponse($response['body']);
+            if (! empty($lists)) {
+                $this->listsCache = $lists;
+
+                return $this->listsCache;
+            }
+        }
+
+        $this->logger->log([
+            'event_key' => 'notifuse.lists.fetch',
+            'entity_type' => 'list',
+            'status' => 'integration_failed',
+            'message' => [
+                'reason' => $workspaceId === '' ? 'workspace_id_missing_or_endpoint_mismatch' : 'endpoint_mismatch_or_empty_response',
+                'workspace_id' => $workspaceId,
+            ],
+        ]);
+        $this->listsCache = [];
 
         return $this->listsCache;
     }
@@ -170,7 +204,7 @@ final class Client
     public function sendTransactional(string $notificationId, array $contact, array $data = [], array $metadata = [], string $externalId = ''): array
     {
         $settings = Settings::get('notifuse', []);
-        $workspaceId = sanitize_text_field((string) ($settings['workspace_id'] ?? ''));
+        $workspaceId = $this->normalizeWorkspaceId((string) ($settings['workspace_id'] ?? ''));
         $email = sanitize_email((string) ($contact['email'] ?? ''));
 
         if ($workspaceId === '' || $email === '' || $notificationId === '') {
@@ -216,7 +250,7 @@ final class Client
             return ['success' => false, 'message' => 'Custom event tracking is disabled.', 'code' => 0, 'body' => []];
         }
 
-        $workspaceId = sanitize_text_field((string) ($settings['workspace_id'] ?? ''));
+        $workspaceId = $this->normalizeWorkspaceId((string) ($settings['workspace_id'] ?? ''));
         $email = sanitize_email($email);
         $eventName = strtolower(sanitize_text_field($eventName));
 
@@ -263,9 +297,31 @@ final class Client
             return ['success' => false, 'message' => 'Unsubscribe is disabled.'];
         }
 
-        $payload = ['email' => $email, 'unsubscribed' => true];
+        $settings = Settings::get('notifuse', []);
+        $workspaceId = $this->normalizeWorkspaceId((string) ($settings['workspace_id'] ?? ''));
+        $listIds = $this->normalizeListIds($this->getConfiguredDefaultListIds());
 
-        return $this->request('POST', '/api/contacts', $payload);
+        if ($workspaceId === '' || empty($listIds)) {
+            return ['success' => false, 'message' => 'Workspace ID and at least one list ID are required for unsubscribe.', 'code' => 0, 'body' => []];
+        }
+
+        $payload = [
+            'workspace_id' => $workspaceId,
+            'contact' => ['email' => sanitize_email($email)],
+            'list_ids' => $listIds,
+        ];
+
+        $result = $this->request('POST', '/api/lists.unsubscribe', $payload);
+        $this->logger->log([
+            'event_key' => 'notifuse.list.unsubscribe',
+            'entity_type' => 'contact',
+            'status' => $result['success'] ? 'integration_sent' : 'integration_failed',
+            'message' => $result['message'],
+            'response_code' => $result['code'],
+            'payload' => $payload,
+        ]);
+
+        return $result;
     }
 
     private function upsertContact(array $contact, array $listIds = [], bool $returnResponse = false, array $options = []): ?array
@@ -294,15 +350,26 @@ final class Client
         ];
 
         $payload = [
-            'email' => $contact['email'],
-            'external_id' => isset($contact['wp_user_id']) ? 'wp-user-' . (string) $contact['wp_user_id'] : (isset($contact['wp_order_id']) ? 'wc-order-' . (string) $contact['wp_order_id'] : ''),
-            'first_name' => $contact['first_name'] ?? '',
-            'last_name' => $contact['last_name'] ?? '',
-            'listIds' => $normalizedListIds,
-            'custom_json_1' => $contact,
+            'workspace_id' => $this->normalizeWorkspaceId((string) ($settings['workspace_id'] ?? '')),
+            'contact' => [
+                'email' => sanitize_email((string) $contact['email']),
+                'external_id' => isset($contact['wp_user_id']) ? 'wp-user-' . (string) $contact['wp_user_id'] : (isset($contact['wp_order_id']) ? 'wc-order-' . (string) $contact['wp_order_id'] : ''),
+                'first_name' => sanitize_text_field((string) ($contact['first_name'] ?? '')),
+                'last_name' => sanitize_text_field((string) ($contact['last_name'] ?? '')),
+                'custom_json_1' => $contact,
+            ],
+            'list_ids' => $normalizedListIds,
         ];
 
-        $result = $this->request('POST', '/api/contacts', $payload);
+        if ($payload['workspace_id'] === '') {
+            return $returnResponse ? ['success' => false, 'message' => 'Notifuse workspace ID is required for authenticated list subscriptions.', 'code' => 0, 'body' => []] : null;
+        }
+
+        if (empty($payload['list_ids'])) {
+            return $returnResponse ? ['success' => false, 'message' => 'At least one Notifuse list ID is required for subscription.', 'code' => 0, 'body' => []] : null;
+        }
+
+        $result = $this->request('POST', '/api/lists.subscribe', $payload);
 
         $this->logger->log([
             'event_key' => 'notifuse.contact.upsert',
@@ -356,6 +423,43 @@ final class Client
         }, $listIds)));
     }
 
+    private function getConfiguredDefaultListIds(): array
+    {
+        $settings = Settings::get('notifuse', []);
+        $defaultList = sanitize_text_field((string) ($settings['default_list_id'] ?? ''));
+        $formLists = isset($settings['public_form_list_ids']) && is_array($settings['public_form_list_ids'])
+            ? array_values(array_filter(array_map('sanitize_text_field', $settings['public_form_list_ids'])))
+            : [];
+
+        if ($defaultList !== '') {
+            array_unshift($formLists, $defaultList);
+        }
+
+        return array_values(array_unique(array_filter($formLists)));
+    }
+
+    private function extractListsFromResponse(array $body): array
+    {
+        if (isset($body['lists']) && is_array($body['lists'])) {
+            return array_values(array_filter($body['lists'], 'is_array'));
+        }
+
+        if (isset($body['data']) && is_array($body['data'])) {
+            return array_values(array_filter($body['data'], 'is_array'));
+        }
+
+        if (array_is_list($body) && ! empty($body) && is_array($body[0])) {
+            return $body;
+        }
+
+        return [];
+    }
+
+    private function normalizeWorkspaceId(string $workspaceId): string
+    {
+        return strtolower(sanitize_text_field($workspaceId));
+    }
+
     private function request(string $method, string $path, array $payload = []): array
     {
         $settings = Settings::get('notifuse', []);
@@ -386,11 +490,24 @@ final class Client
         }
 
         $code = (int) wp_remote_retrieve_response_code($response);
-        $body = json_decode((string) wp_remote_retrieve_body($response), true);
+        $rawBody = (string) wp_remote_retrieve_body($response);
+        $body = json_decode($rawBody, true);
+        $message = $code >= 200 && $code < 300 ? 'Request succeeded.' : 'Request failed with HTTP ' . $code . '.';
+
+        if (is_array($body)) {
+            foreach (['message', 'error', 'detail'] as $key) {
+                if (! empty($body[$key]) && is_string($body[$key])) {
+                    $message = (string) $body[$key];
+                    break;
+                }
+            }
+        } elseif ($rawBody !== '') {
+            $message = $code >= 200 && $code < 300 ? 'Request succeeded.' : wp_strip_all_tags($rawBody);
+        }
 
         return [
             'success' => $code >= 200 && $code < 300,
-            'message' => $code >= 200 && $code < 300 ? 'Request succeeded.' : 'Request failed with HTTP ' . $code . '.',
+            'message' => $message,
             'code' => $code,
             'body' => is_array($body) ? $body : [],
         ];

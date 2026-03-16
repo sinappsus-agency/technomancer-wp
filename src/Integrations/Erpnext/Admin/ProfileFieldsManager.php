@@ -4,8 +4,17 @@ declare(strict_types=1);
 
 namespace Sinappsus\N8nConnector\Integrations\Erpnext\Admin;
 
+use Sinappsus\N8nConnector\Integrations\Erpnext\Client;
+
 final class ProfileFieldsManager
 {
+    private Client $client;
+
+    public function __construct(Client $client)
+    {
+        $this->client = $client;
+    }
+
     public function register(): void
     {
         add_action('register_form', [$this, 'renderRegisterFields']);
@@ -18,6 +27,8 @@ final class ProfileFieldsManager
 
     public function renderRegisterFields(): void
     {
+        $customerGroupOptions = $this->client->getReferenceOptions('Customer Group');
+        $territoryOptions = $this->client->getReferenceOptions('Territory');
         ?>
         <p>
             <label for="snc_erp_customer_name">ERP Customer Name<br />
@@ -25,14 +36,12 @@ final class ProfileFieldsManager
             </label>
         </p>
         <p>
-            <label for="snc_erp_customer_group">ERP Customer Group<br />
-                <input type="text" name="snc_erp_customer_group" id="snc_erp_customer_group" class="input" value="Commercial" />
-            </label>
+            <label for="snc_erp_customer_group">ERP Customer Group<br /></label>
+            <?php $this->renderSelectOrInput('snc_erp_customer_group', 'snc_erp_customer_group', 'Commercial', $customerGroupOptions, 'input'); ?>
         </p>
         <p>
-            <label for="snc_erp_territory">ERP Territory<br />
-                <input type="text" name="snc_erp_territory" id="snc_erp_territory" class="input" value="All Territories" />
-            </label>
+            <label for="snc_erp_territory">ERP Territory<br /></label>
+            <?php $this->renderSelectOrInput('snc_erp_territory', 'snc_erp_territory', 'All Territories', $territoryOptions, 'input'); ?>
         </p>
         <?php
     }
@@ -44,6 +53,9 @@ final class ProfileFieldsManager
 
     public function renderProfileFields(\WP_User $user): void
     {
+        $customerGroupOptions = $this->client->getReferenceOptions('Customer Group');
+        $territoryOptions = $this->client->getReferenceOptions('Territory');
+        $companyOptions = $this->client->getReferenceOptions('Company');
         ?>
         <h2>ERPNext Profile Fields</h2>
         <table class="form-table">
@@ -53,15 +65,15 @@ final class ProfileFieldsManager
             </tr>
             <tr>
                 <th><label for="snc_erp_customer_group">ERP Customer Group</label></th>
-                <td><input type="text" name="snc_erp_customer_group" id="snc_erp_customer_group" class="regular-text" value="<?php echo esc_attr((string) get_user_meta($user->ID, 'snc_erp_customer_group', true)); ?>" /></td>
+                <td><?php $this->renderSelectOrInput('snc_erp_customer_group', 'snc_erp_customer_group', (string) get_user_meta($user->ID, 'snc_erp_customer_group', true), $customerGroupOptions, 'regular-text'); ?></td>
             </tr>
             <tr>
                 <th><label for="snc_erp_territory">ERP Territory</label></th>
-                <td><input type="text" name="snc_erp_territory" id="snc_erp_territory" class="regular-text" value="<?php echo esc_attr((string) get_user_meta($user->ID, 'snc_erp_territory', true)); ?>" /></td>
+                <td><?php $this->renderSelectOrInput('snc_erp_territory', 'snc_erp_territory', (string) get_user_meta($user->ID, 'snc_erp_territory', true), $territoryOptions, 'regular-text'); ?></td>
             </tr>
             <tr>
                 <th><label for="snc_erp_company">ERP Company</label></th>
-                <td><input type="text" name="snc_erp_company" id="snc_erp_company" class="regular-text" value="<?php echo esc_attr((string) get_user_meta($user->ID, 'snc_erp_company', true)); ?>" /></td>
+                <td><?php $this->renderSelectOrInput('snc_erp_company', 'snc_erp_company', (string) get_user_meta($user->ID, 'snc_erp_company', true), $companyOptions, 'regular-text'); ?></td>
             </tr>
         </table>
         <?php
@@ -82,5 +94,28 @@ final class ProfileFieldsManager
         update_user_meta($userId, 'snc_erp_customer_group', sanitize_text_field((string) ($_POST['snc_erp_customer_group'] ?? '')));
         update_user_meta($userId, 'snc_erp_territory', sanitize_text_field((string) ($_POST['snc_erp_territory'] ?? '')));
         update_user_meta($userId, 'snc_erp_company', sanitize_text_field((string) ($_POST['snc_erp_company'] ?? '')));
+    }
+
+    private function renderSelectOrInput(string $id, string $name, string $value, array $options, string $className): void
+    {
+        if (! empty($options)) {
+            ?>
+            <select name="<?php echo esc_attr($name); ?>" id="<?php echo esc_attr($id); ?>" class="<?php echo esc_attr($className); ?>">
+                <option value="">Select from ERPNext</option>
+                <?php if ($value !== '' && ! isset($options[$value])) : ?>
+                    <option value="<?php echo esc_attr($value); ?>" selected="selected"><?php echo esc_html('Current saved value (' . $value . ')'); ?></option>
+                <?php endif; ?>
+                <?php foreach ($options as $optionValue => $optionLabel) : ?>
+                    <option value="<?php echo esc_attr((string) $optionValue); ?>" <?php selected($value, (string) $optionValue); ?>><?php echo esc_html((string) $optionLabel); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <?php
+
+            return;
+        }
+
+        ?>
+        <input type="text" name="<?php echo esc_attr($name); ?>" id="<?php echo esc_attr($id); ?>" class="<?php echo esc_attr($className); ?>" value="<?php echo esc_attr($value); ?>" />
+        <?php
     }
 }

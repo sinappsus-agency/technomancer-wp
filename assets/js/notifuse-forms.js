@@ -11,32 +11,50 @@
 
     function submitForm(event) {
         var form = event.target;
-        if (!form.classList.contains('snc-notifuse-form')) {
+        if (!(form instanceof HTMLFormElement) || !form.classList.contains('snc-notifuse-form')) {
             return;
         }
 
         event.preventDefault();
         setStatus(form, 'Submitting...', 'pending');
 
+        var actionUrl = form.getAttribute('action') || window.location.href;
+
         var submitButton = form.querySelector('button[type="submit"]');
         if (submitButton) {
             submitButton.disabled = true;
         }
 
-        fetch(form.action, {
+        fetch(actionUrl, {
             method: 'POST',
             body: new FormData(form),
             credentials: 'same-origin'
         })
             .then(function (response) {
-                return response.json().then(function (json) {
+                return response.text().then(function (text) {
+                    var json;
+
+                    try {
+                        json = JSON.parse(text);
+                    } catch (error) {
+                        json = {
+                            message: text && text.trim() ? text.trim() : null
+                        };
+                    }
+
                     return { ok: response.ok, json: json };
                 });
             })
             .then(function (result) {
                 setStatus(form, result.json.message || (result.ok ? 'Success.' : 'Request failed.'), result.ok ? 'success' : 'error');
                 if (result.ok) {
+                    var redirectUrl = form.getAttribute('data-success-redirect');
+
                     form.reset();
+
+                    if (redirectUrl) {
+                        window.location.assign(redirectUrl);
+                    }
                 }
             })
             .catch(function () {

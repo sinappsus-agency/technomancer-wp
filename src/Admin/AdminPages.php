@@ -73,7 +73,7 @@ final class AdminPages
             'notifuse' => [
                 'base_url' => esc_url_raw((string) ($settings['notifuse']['base_url'] ?? '')),
                 'api_key' => sanitize_text_field((string) ($settings['notifuse']['api_key'] ?? '')),
-                'workspace_id' => sanitize_text_field((string) ($settings['notifuse']['workspace_id'] ?? '')),
+                'workspace_id' => strtolower(sanitize_text_field((string) ($settings['notifuse']['workspace_id'] ?? ''))),
                 'default_list_id' => sanitize_text_field((string) ($settings['notifuse']['default_list_id'] ?? '')),
                 'public_form_list_ids' => $notifusePublicLists,
                 'signup_on_registration' => empty($settings['notifuse']['signup_on_registration']) ? 0 : 1,
@@ -160,7 +160,7 @@ final class AdminPages
         ];
     }
 
-    private function renderMappingTable(string $prefix, array $sourceFields, array $savedMapping, string $description): void
+    private function renderMappingTable(string $prefix, array $sourceFields, array $savedMapping, string $description, array $destinationOptions = []): void
     {
         ?>
         <table class="widefat striped" style="max-width:900px;">
@@ -175,13 +175,51 @@ final class AdminPages
                     <tr>
                         <td><?php echo esc_html($sourceLabel); ?></td>
                         <td>
-                            <input class="regular-text" name="snc_settings[erpnext][<?php echo esc_attr($prefix); ?>][<?php echo esc_attr($sourceKey); ?>]" value="<?php echo esc_attr((string) ($savedMapping[$sourceKey] ?? '')); ?>" placeholder="ERPNext field name" />
+                            <?php $currentValue = (string) ($savedMapping[$sourceKey] ?? ''); ?>
+                            <?php if (! empty($destinationOptions)) : ?>
+                                <select class="regular-text" name="snc_settings[erpnext][<?php echo esc_attr($prefix); ?>][<?php echo esc_attr($sourceKey); ?>]">
+                                    <option value="">Do not map</option>
+                                    <?php if ($currentValue !== '' && ! isset($destinationOptions[$currentValue])) : ?>
+                                        <option value="<?php echo esc_attr($currentValue); ?>" selected="selected"><?php echo esc_html('Current saved field (' . $currentValue . ')'); ?></option>
+                                    <?php endif; ?>
+                                    <?php foreach ($destinationOptions as $optionValue => $optionLabel) : ?>
+                                        <option value="<?php echo esc_attr($optionValue); ?>" <?php selected($currentValue, (string) $optionValue); ?>><?php echo esc_html((string) $optionLabel); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            <?php else : ?>
+                                <input class="regular-text" name="snc_settings[erpnext][<?php echo esc_attr($prefix); ?>][<?php echo esc_attr($sourceKey); ?>]" value="<?php echo esc_attr($currentValue); ?>" placeholder="ERPNext field name" />
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
-        <p class="description"><?php echo esc_html($description); ?> Leave the ERPNext field empty if you do not want that source value copied over.</p>
+        <p class="description"><?php echo esc_html($description); ?> Leave the ERPNext field empty if you do not want that source value copied over.<?php echo empty($destinationOptions) ? ' Save valid ERPNext credentials to load destination fields automatically.' : ''; ?></p>
+        <?php
+    }
+
+    private function renderErpSelectOrInput(string $id, string $name, string $value, array $options, string $description): void
+    {
+        if (! empty($options)) {
+            ?>
+            <select id="<?php echo esc_attr($id); ?>" class="regular-text" name="<?php echo esc_attr($name); ?>">
+                <option value="">Select from ERPNext</option>
+                <?php if ($value !== '' && ! isset($options[$value])) : ?>
+                    <option value="<?php echo esc_attr($value); ?>" selected="selected"><?php echo esc_html('Current saved value (' . $value . ')'); ?></option>
+                <?php endif; ?>
+                <?php foreach ($options as $optionValue => $optionLabel) : ?>
+                    <option value="<?php echo esc_attr((string) $optionValue); ?>" <?php selected($value, (string) $optionValue); ?>><?php echo esc_html((string) $optionLabel); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <p class="description"><?php echo esc_html($description); ?> These choices are loaded live from ERPNext.</p>
+            <?php
+
+            return;
+        }
+
+        ?>
+        <input id="<?php echo esc_attr($id); ?>" class="regular-text" name="<?php echo esc_attr($name); ?>" value="<?php echo esc_attr($value); ?>" />
+        <p class="description"><?php echo esc_html($description); ?> Save valid ERPNext credentials and reload this page to get a dropdown instead of a free-text field.</p>
         <?php
     }
 
@@ -779,7 +817,7 @@ final class AdminPages
                 <?php wp_nonce_field('snc_test_notifuse'); ?>
                 <?php submit_button('Test Notifuse Connection', 'secondary'); ?>
             </form>
-            <p>Elementor widgets available when Elementor is active: subscribe and unsubscribe. Shortcodes: <code>[snc_notifuse_subscribe]</code> and <code>[snc_notifuse_unsubscribe]</code>. Subscribe forms can optionally show the frontend-selectable lists and the consent checkbox configured here.</p>
+            <p>Elementor widgets available when Elementor is active: subscribe and unsubscribe. Shortcodes: <code>[snc_notifuse_subscribe]</code> and <code>[snc_notifuse_unsubscribe]</code>. Both shortcodes also support <code>redirect_url</code> for redirecting after a successful submission, for example <code>[snc_notifuse_subscribe list_ids="example-list" redirect_url="/free-download/"]</code>. Subscribe forms can optionally show the frontend-selectable lists and the consent checkbox configured here.</p>
         </div>
         <?php
     }
@@ -788,6 +826,14 @@ final class AdminPages
     {
         $settings = Settings::all();
         $erpnext = $settings['erpnext'] ?? [];
+        $companyOptions = $this->erpnextClient->getReferenceOptions('Company');
+        $warehouseOptions = $this->erpnextClient->getReferenceOptions('Warehouse');
+        $itemGroupOptions = $this->erpnextClient->getReferenceOptions('Item Group');
+        $priceListOptions = $this->erpnextClient->getReferenceOptions('Price List');
+        $customerGroupOptions = $this->erpnextClient->getReferenceOptions('Customer Group');
+        $territoryOptions = $this->erpnextClient->getReferenceOptions('Territory');
+        $customerFieldOptions = $this->erpnextClient->getDocTypeFieldOptions('Customer');
+        $productFieldOptions = $this->erpnextClient->getDocTypeFieldOptions('Item');
         ?>
         <div class="wrap">
             <h1>ERPNext</h1>
@@ -795,7 +841,7 @@ final class AdminPages
                 'Use this page only if WordPress should sync customers, orders, products, or stock with an existing ERPNext instance.',
                 'The connection settings below do not create ERPNext doctypes. They point the plugin at your existing ERPNext site and API credentials.',
                 'Sync toggles decide which kinds of WordPress data the plugin is allowed to send or pull.',
-                'Mapping tables let you copy WordPress fields into custom ERPNext fields when names do not match.',
+                'Mapping tables let you copy WordPress fields into ERPNext fields when names do not match, and the dropdowns below will load those field names directly from ERPNext when your connection works.',
             ]); ?>
             <?php if (isset($_GET['erpnext_test'])) : ?>
                 <div class="notice <?php echo $_GET['erpnext_test'] === 'success' ? 'notice-success' : 'notice-error'; ?>"><p><?php echo esc_html((string) ($_GET['message'] ?? '')); ?></p></div>
@@ -833,43 +879,37 @@ final class AdminPages
                     <tr>
                         <th><label for="snc-erp-company">Company</label></th>
                         <td>
-                            <input id="snc-erp-company" class="regular-text" name="snc_settings[erpnext][company]" value="<?php echo esc_attr((string) ($erpnext['company'] ?? '')); ?>" />
-                            <p class="description">Default ERPNext company name used for Sales Order creation.</p>
+                            <?php $this->renderErpSelectOrInput('snc-erp-company', 'snc_settings[erpnext][company]', (string) ($erpnext['company'] ?? ''), $companyOptions, 'Default ERPNext company name used for Sales Order creation.'); ?>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-warehouse">Warehouse</label></th>
                         <td>
-                            <input id="snc-erp-warehouse" class="regular-text" name="snc_settings[erpnext][warehouse]" value="<?php echo esc_attr((string) ($erpnext['warehouse'] ?? '')); ?>" />
-                            <p class="description">Default warehouse used when importing stock or exporting products.</p>
+                            <?php $this->renderErpSelectOrInput('snc-erp-warehouse', 'snc_settings[erpnext][warehouse]', (string) ($erpnext['warehouse'] ?? ''), $warehouseOptions, 'Default warehouse used when importing stock or exporting products.'); ?>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-item-group">Item Group</label></th>
                         <td>
-                            <input id="snc-erp-item-group" class="regular-text" name="snc_settings[erpnext][item_group]" value="<?php echo esc_attr((string) ($erpnext['item_group'] ?? '')); ?>" />
-                            <p class="description">Fallback ERPNext item group for exported WooCommerce products.</p>
+                            <?php $this->renderErpSelectOrInput('snc-erp-item-group', 'snc_settings[erpnext][item_group]', (string) ($erpnext['item_group'] ?? ''), $itemGroupOptions, 'Fallback ERPNext item group for exported WooCommerce products.'); ?>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-price-list">Price List</label></th>
                         <td>
-                            <input id="snc-erp-price-list" class="regular-text" name="snc_settings[erpnext][price_list]" value="<?php echo esc_attr((string) ($erpnext['price_list'] ?? '')); ?>" />
-                            <p class="description">Optional ERPNext price list reference if your process depends on one.</p>
+                            <?php $this->renderErpSelectOrInput('snc-erp-price-list', 'snc_settings[erpnext][price_list]', (string) ($erpnext['price_list'] ?? ''), $priceListOptions, 'Optional ERPNext price list reference if your process depends on one. Imported products will use this price list when available.'); ?>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-customer-group">Customer Group</label></th>
                         <td>
-                            <input id="snc-erp-customer-group" class="regular-text" name="snc_settings[erpnext][customer_group]" value="<?php echo esc_attr((string) ($erpnext['customer_group'] ?? 'Commercial')); ?>" /></td>
-                            <p class="description">Fallback ERPNext customer group when WordPress users do not already store one.</p>
+                            <?php $this->renderErpSelectOrInput('snc-erp-customer-group', 'snc_settings[erpnext][customer_group]', (string) ($erpnext['customer_group'] ?? 'Commercial'), $customerGroupOptions, 'Fallback ERPNext customer group when WordPress users do not already store one.'); ?>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-territory">Territory</label></th>
                         <td>
-                            <input id="snc-erp-territory" class="regular-text" name="snc_settings[erpnext][territory]" value="<?php echo esc_attr((string) ($erpnext['territory'] ?? 'All Territories')); ?>" />
-                            <p class="description">Fallback ERPNext territory for synced customers.</p>
+                            <?php $this->renderErpSelectOrInput('snc-erp-territory', 'snc_settings[erpnext][territory]', (string) ($erpnext['territory'] ?? 'All Territories'), $territoryOptions, 'Fallback ERPNext territory for synced customers.'); ?>
                         </td>
                     </tr>
                     <tr>
@@ -905,9 +945,9 @@ final class AdminPages
                     </tr>
                 </table>
                 <h2>Customer Field Mapping</h2>
-                <?php $this->renderMappingTable('customer_mapping', $this->erpCustomerSourceFields(), is_array($erpnext['customer_mapping'] ?? null) ? $erpnext['customer_mapping'] : [], 'Map WordPress or WooCommerce customer fields into ERPNext customer fields.'); ?>
+                <?php $this->renderMappingTable('customer_mapping', $this->erpCustomerSourceFields(), is_array($erpnext['customer_mapping'] ?? null) ? $erpnext['customer_mapping'] : [], 'Map WordPress or WooCommerce customer fields into ERPNext customer fields.', $customerFieldOptions); ?>
                 <h2>Product Field Mapping</h2>
-                <?php $this->renderMappingTable('product_mapping', $this->erpProductSourceFields(), is_array($erpnext['product_mapping'] ?? null) ? $erpnext['product_mapping'] : [], 'Map WooCommerce product fields into ERPNext item fields.'); ?>
+                <?php $this->renderMappingTable('product_mapping', $this->erpProductSourceFields(), is_array($erpnext['product_mapping'] ?? null) ? $erpnext['product_mapping'] : [], 'Map WooCommerce product fields into ERPNext item fields.', $productFieldOptions); ?>
                 <?php submit_button('Save ERPNext Settings'); ?>
             </form>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">

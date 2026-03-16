@@ -71,10 +71,10 @@ final class Plugin
         $this->authorizer = new RequestAuthorizer($this->logger);
         $this->notifuseClient = new NotifuseClient($this->logger);
         $this->erpnextClient = new ErpnextClient($this->logger);
-        $this->notifuseProfileManager = new NotifuseProfileManager($this->notifuseClient);
-        $this->erpnextProfileFieldsManager = new ErpnextProfileFieldsManager();
+        $this->notifuseProfileManager = new NotifuseProfileManager($this->notifuseClient, $this->logger);
+        $this->erpnextProfileFieldsManager = new ErpnextProfileFieldsManager($this->erpnextClient);
         $this->productSyncManager = new ProductSyncManager($this->erpnextClient, $this->logger);
-        $this->productFieldsManager = new ProductFieldsManager();
+        $this->productFieldsManager = new ProductFieldsManager($this->erpnextClient);
         $this->syncScheduler = new SyncScheduler($this->erpnextClient, $this->logger);
         $this->widgetRegistrar = new WidgetRegistrar();
         $this->dispatcher = new Dispatcher($this->flows, $this->logger);

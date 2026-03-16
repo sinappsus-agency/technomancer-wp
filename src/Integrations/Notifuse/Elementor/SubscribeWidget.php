@@ -66,12 +66,27 @@ final class SubscribeWidget extends \Elementor\Widget_Base
             'return_value' => '1',
             'default' => '',
         ]);
+        $this->add_control('redirect_url', [
+            'label' => 'Success Redirect URL',
+            'type' => \Elementor\Controls_Manager::URL,
+            'placeholder' => 'https://example.com/thank-you/',
+            'description' => 'Optional. Redirect after a successful form submission.',
+            'show_external' => false,
+            'dynamic' => [
+                'active' => true,
+            ],
+        ]);
         $this->end_controls_section();
     }
 
     protected function render(): void
     {
         $settings = $this->get_settings_for_display();
-        echo do_shortcode('[snc_notifuse_subscribe button_text="' . esc_attr((string) ($settings['button_text'] ?? 'Subscribe')) . '" list_ids="' . esc_attr((string) ($settings['list_ids'] ?? '')) . '" show_lists="' . esc_attr(! empty($settings['show_lists']) ? '1' : '0') . '" consent_text="' . esc_attr((string) ($settings['consent_text'] ?? '')) . '" consent_required="' . esc_attr((string) ($settings['consent_required'] ?? '')) . '"]');
+        $redirectUrl = '';
+        if (isset($settings['redirect_url']) && is_array($settings['redirect_url'])) {
+            $redirectUrl = (string) ($settings['redirect_url']['url'] ?? '');
+        }
+
+        echo do_shortcode('[snc_notifuse_subscribe button_text="' . esc_attr((string) ($settings['button_text'] ?? 'Subscribe')) . '" list_ids="' . esc_attr((string) ($settings['list_ids'] ?? '')) . '" show_lists="' . esc_attr(! empty($settings['show_lists']) ? '1' : '0') . '" consent_text="' . esc_attr((string) ($settings['consent_text'] ?? '')) . '" consent_required="' . esc_attr((string) ($settings['consent_required'] ?? '')) . '" redirect_url="' . esc_attr($redirectUrl) . '"]');
     }
 }

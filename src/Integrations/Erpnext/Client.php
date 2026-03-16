@@ -11,9 +11,104 @@ final class Client
 {
     private Logger $logger;
 
+    private array $doctypeFieldCache = [];
+
+    private array $recordOptionsCache = [];
+
     public function __construct(Logger $logger)
     {
         $this->logger = $logger;
+    }
+
+    public function getDocTypeFieldOptions(string $doctype): array
+    {
+        $cacheKey = strtolower(trim($doctype));
+        if ($cacheKey === '') {
+            return [];
+        }
+
+        if (isset($this->doctypeFieldCache[$cacheKey])) {
+            return $this->doctypeFieldCache[$cacheKey];
+        }
+
+        $response = $this->request('GET', '/api/resource/DocType/' . rawurlencode($doctype));
+        if (! $response['success']) {
+            $this->doctypeFieldCache[$cacheKey] = [];
+
+            return [];
+        }
+
+        $body = is_array($response['body']) ? $response['body'] : [];
+        $data = isset($body['data']) && is_array($body['data']) ? $body['data'] : [];
+        $fields = isset($data['fields']) && is_array($data['fields']) ? $data['fields'] : [];
+        $options = [
+            'name' => 'Document Name (name)',
+        ];
+
+        foreach ($fields as $field) {
+            if (! is_array($field)) {
+                continue;
+            }
+
+            $fieldName = sanitize_text_field((string) ($field['fieldname'] ?? ''));
+            $fieldType = sanitize_text_field((string) ($field['fieldtype'] ?? ''));
+            if ($fieldName === '' || in_array($fieldType, ['Section Break', 'Column Break', 'Tab Break', 'Fold', 'HTML', 'Button', 'Table', 'Table MultiSelect'], true)) {
+                continue;
+            }
+
+            $label = sanitize_text_field((string) ($field['label'] ?? $fieldName));
+            $options[$fieldName] = $label . ' (' . $fieldName . ($fieldType !== '' ? ' · ' . $fieldType : '') . ')';
+        }
+
+        $this->doctypeFieldCache[$cacheKey] = $options;
+
+        return $options;
+    }
+
+    public function getReferenceOptions(string $doctype, string $labelField = 'name', int $limit = 200): array
+    {
+        $cacheKey = strtolower(trim($doctype)) . ':' . strtolower(trim($labelField)) . ':' . $limit;
+        if (isset($this->recordOptionsCache[$cacheKey])) {
+            return $this->recordOptionsCache[$cacheKey];
+        }
+
+        $fields = $labelField === 'name' ? ['name'] : ['name', $labelField];
+        $response = $this->request(
+            'GET',
+            '/api/resource/' . rawurlencode($doctype)
+            . '?fields=' . rawurlencode((string) wp_json_encode($fields))
+            . '&limit_page_length=' . max(1, min(500, $limit))
+            . '&order_by=' . rawurlencode('name asc')
+        );
+
+        if (! $response['success']) {
+            $this->recordOptionsCache[$cacheKey] = [];
+
+            return [];
+        }
+
+        $body = is_array($response['body']) ? $response['body'] : [];
+        $rows = isset($body['data']) && is_array($body['data']) ? $body['data'] : [];
+        $options = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $name = sanitize_text_field((string) ($row['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $label = sanitize_text_field((string) ($row[$labelField] ?? $name));
+            $options[$name] = $label === '' || $label === $name ? $name : $label . ' (' . $name . ')';
+        }
+
+        natcasesort($options);
+        $this->recordOptionsCache[$cacheKey] = $options;
+
+        return $options;
     }
 
     public function testConnection(): array
@@ -185,7 +280,23 @@ final class Client
 
     public function fetchItems(int $limit = 20): array
     {
-        $response = $this->request('GET', '/api/resource/Item?limit_page_length=' . $limit);
+        $fields = [
+            'name',
+            'item_code',
+            'item_name',
+            'description',
+            'item_group',
+            'stock_uom',
+            'default_warehouse',
+            'disabled',
+            'is_stock_item',
+            'image',
+        ];
+
+        $response = $this->request(
+            'GET',
+            '/api/resource/Item?fields=' . rawurlencode((string) wp_json_encode($fields)) . '&limit_page_length=' . $limit
+        );
         if (! $response['success']) {
             return [];
         }
@@ -203,16 +314,35 @@ final class Client
 
         $settings = Settings::get('erpnext', []);
         $items = $this->fetchItems($limit);
+        $itemCodes = [];
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $itemCode = sanitize_text_field((string) ($item['item_code'] ?? $item['name'] ?? ''));
+            if ($itemCode !== '') {
+                $itemCodes[] = $itemCode;
+            }
+        }
+
+        $priceMap = $this->fetchItemPriceMap($itemCodes, (string) ($settings['price_list'] ?? ''));
         $imported = 0;
         foreach ($items as $item) {
-            $itemCode = sanitize_text_field((string) ($item['name'] ?? $item['item_code'] ?? ''));
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $itemCode = sanitize_text_field((string) ($item['item_code'] ?? $item['name'] ?? ''));
             if ($itemCode === '') {
                 continue;
             }
 
             $productId = wc_get_product_id_by_sku($itemCode);
+            $description = wp_kses_post((string) ($item['description'] ?? ''));
             $postData = [
                 'post_title' => sanitize_text_field((string) ($item['item_name'] ?? $itemCode)),
+                'post_content' => $description,
                 'post_type' => 'product',
                 'post_status' => 'publish',
             ];
@@ -228,12 +358,18 @@ final class Client
             }
 
             if ($productId > 0) {
-                update_post_meta($productId, '_price', (string) ($item['standard_rate'] ?? '0'));
-                update_post_meta($productId, '_regular_price', (string) ($item['standard_rate'] ?? '0'));
+                $price = isset($priceMap[$itemCode]['price']) ? (string) $priceMap[$itemCode]['price'] : '';
+                if ($price !== '') {
+                    update_post_meta($productId, '_price', $price);
+                    update_post_meta($productId, '_regular_price', $price);
+                }
+
                 update_post_meta($productId, '_snc_erp_item_code', $itemCode);
                 update_post_meta($productId, '_snc_erp_item_docname', sanitize_text_field((string) ($item['name'] ?? $itemCode)));
                 update_post_meta($productId, '_snc_erp_item_group', sanitize_text_field((string) ($item['item_group'] ?? (string) ($settings['item_group'] ?? ''))));
-                update_post_meta($productId, '_snc_erp_warehouse', sanitize_text_field((string) ($settings['warehouse'] ?? '')));
+                update_post_meta($productId, '_snc_erp_warehouse', sanitize_text_field((string) ($item['default_warehouse'] ?? (string) ($settings['warehouse'] ?? ''))));
+                update_post_meta($productId, '_snc_erp_stock_uom', sanitize_text_field((string) ($item['stock_uom'] ?? '')));
+                update_post_meta($productId, '_snc_erp_image', esc_url_raw((string) ($item['image'] ?? '')));
                 $imported++;
             }
         }
@@ -397,6 +533,60 @@ final class Client
         }
 
         return isset($rows[0]['actual_qty']) ? (float) $rows[0]['actual_qty'] : null;
+    }
+
+    private function fetchItemPriceMap(array $itemCodes, string $priceList = ''): array
+    {
+        $itemCodes = array_values(array_unique(array_filter(array_map(static function ($itemCode): string {
+            return sanitize_text_field((string) $itemCode);
+        }, $itemCodes))));
+
+        if (empty($itemCodes)) {
+            return [];
+        }
+
+        $filters = [
+            ['item_code', 'in', $itemCodes],
+            ['selling', '=', 1],
+        ];
+        if ($priceList !== '') {
+            $filters[] = ['price_list', '=', sanitize_text_field($priceList)];
+        }
+
+        $fields = ['item_code', 'price_list', 'price_list_rate'];
+        $response = $this->request(
+            'GET',
+            '/api/resource/' . rawurlencode('Item Price')
+            . '?fields=' . rawurlencode((string) wp_json_encode($fields))
+            . '&filters=' . rawurlencode((string) wp_json_encode($filters))
+            . '&limit_page_length=' . max(20, count($itemCodes) * 5)
+        );
+
+        if (! $response['success']) {
+            return [];
+        }
+
+        $body = is_array($response['body']) ? $response['body'] : [];
+        $rows = isset($body['data']) && is_array($body['data']) ? $body['data'] : [];
+        $prices = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $itemCode = sanitize_text_field((string) ($row['item_code'] ?? ''));
+            if ($itemCode === '' || isset($prices[$itemCode])) {
+                continue;
+            }
+
+            $prices[$itemCode] = [
+                'price' => isset($row['price_list_rate']) ? (float) $row['price_list_rate'] : 0.0,
+                'price_list' => sanitize_text_field((string) ($row['price_list'] ?? '')),
+            ];
+        }
+
+        return $prices;
     }
 
     private function upsertDoc(string $doctype, array $payload, string $eventKey, array $identityFields = [], ?array $syncState = null, bool $returnResponse = false): ?array
