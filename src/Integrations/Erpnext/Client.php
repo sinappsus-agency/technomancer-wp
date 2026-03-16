@@ -109,11 +109,27 @@ final class Client
             'territory' => $territory !== '' ? $territory : (string) ($settings['territory'] ?? 'All Territories'),
             'email_id' => $order->get_billing_email(),
             'mobile_no' => $order->get_billing_phone(),
+            'custom_wp_user_id' => $customerId,
         ];
 
         $payload = array_merge($payload, $this->applyConfiguredMapping($source, is_array($settings['customer_mapping'] ?? null) ? $settings['customer_mapping'] : []));
 
-        $this->postDoc('Customer', $payload, 'erpnext.customer.sync');
+        $this->upsertDoc(
+            'Customer',
+            $payload,
+            'erpnext.customer.sync',
+            [
+                'custom_wp_user_id' => $customerId > 0 ? (string) $customerId : '',
+                'email_id' => $order->get_billing_email(),
+                'customer_name' => (string) $payload['customer_name'],
+            ],
+            $customerId > 0 ? [
+                'entity_type' => 'user',
+                'entity_id' => $customerId,
+                'hash_key' => 'snc_erp_customer_sync_hash',
+                'docname_key' => 'snc_erp_customer_docname',
+            ] : null
+        );
     }
 
     public function syncOrder(int $orderId, string $context): void
@@ -153,7 +169,18 @@ final class Client
             'custom_sync_context' => $context,
         ];
 
-        $this->postDoc('Sales Order', $payload, 'erpnext.order.sync');
+        $this->upsertDoc(
+            'Sales Order',
+            $payload,
+            'erpnext.order.sync',
+            ['custom_wp_order_id' => (string) $order->get_id()],
+            [
+                'entity_type' => 'post',
+                'entity_id' => $order->get_id(),
+                'hash_key' => '_snc_erp_sales_order_sync_hash',
+                'docname_key' => '_snc_erp_sales_order_docname',
+            ]
+        );
     }
 
     public function fetchItems(int $limit = 20): array
@@ -204,6 +231,7 @@ final class Client
                 update_post_meta($productId, '_price', (string) ($item['standard_rate'] ?? '0'));
                 update_post_meta($productId, '_regular_price', (string) ($item['standard_rate'] ?? '0'));
                 update_post_meta($productId, '_snc_erp_item_code', $itemCode);
+                update_post_meta($productId, '_snc_erp_item_docname', sanitize_text_field((string) ($item['name'] ?? $itemCode)));
                 update_post_meta($productId, '_snc_erp_item_group', sanitize_text_field((string) ($item['item_group'] ?? (string) ($settings['item_group'] ?? ''))));
                 update_post_meta($productId, '_snc_erp_warehouse', sanitize_text_field((string) ($settings['warehouse'] ?? '')));
                 $imported++;
@@ -249,7 +277,22 @@ final class Client
 
         $payload = array_merge($payload, $this->applyConfiguredMapping($source, is_array($settings['product_mapping'] ?? null) ? $settings['product_mapping'] : []));
 
-        return $this->postDoc('Item', $payload, 'erpnext.product.export', true);
+        return $this->upsertDoc(
+            'Item',
+            $payload,
+            'erpnext.product.export',
+            [
+                'custom_wp_product_id' => (string) $product->get_id(),
+                'item_code' => (string) $source['erp_item_code'],
+            ],
+            [
+                'entity_type' => 'post',
+                'entity_id' => $product->get_id(),
+                'hash_key' => '_snc_erp_item_sync_hash',
+                'docname_key' => '_snc_erp_item_docname',
+            ],
+            true
+        ) ?? ['success' => false, 'message' => 'ERPNext export failed.'];
     }
 
     public function verifyStockLevel(int $productId): array
@@ -356,19 +399,144 @@ final class Client
         return isset($rows[0]['actual_qty']) ? (float) $rows[0]['actual_qty'] : null;
     }
 
-    private function postDoc(string $doctype, array $payload, string $eventKey, bool $returnResponse = false): ?array
+    private function upsertDoc(string $doctype, array $payload, string $eventKey, array $identityFields = [], ?array $syncState = null, bool $returnResponse = false): ?array
     {
-        $response = $this->request('POST', '/api/resource/' . rawurlencode($doctype), $payload);
+        $hash = md5((string) wp_json_encode($payload));
+        if ($syncState !== null && $this->isUnchangedSync($syncState, $hash)) {
+            $response = [
+                'success' => true,
+                'message' => 'Skipped unchanged payload.',
+                'code' => 208,
+                'body' => ['skipped' => true],
+            ];
+            $this->logger->log([
+                'event_key' => $eventKey,
+                'entity_type' => 'erpnext',
+                'status' => 'integration_skipped',
+                'message' => $response['message'],
+                'response_code' => $response['code'],
+                'payload' => $payload,
+            ]);
+
+            return $returnResponse ? $response : null;
+        }
+
+        $existingName = $this->findExistingDocName($doctype, $identityFields);
+        $method = $existingName === null ? 'POST' : 'PUT';
+        $path = '/api/resource/' . rawurlencode($doctype) . ($existingName === null ? '' : '/' . rawurlencode($existingName));
+        $response = $this->request($method, $path, $payload);
         $this->logger->log([
             'event_key' => $eventKey,
             'entity_type' => 'erpnext',
-            'status' => $response['success'] ? 'integration_sent' : 'integration_failed',
-            'message' => $response['message'],
+            'status' => $response['success'] ? ($existingName === null ? 'integration_sent' : 'integration_updated') : 'integration_failed',
+            'message' => ['message' => $response['message'], 'method' => $method, 'remote_name' => $existingName],
             'response_code' => $response['code'],
             'payload' => $payload,
         ]);
 
+        if ($response['success'] && $syncState !== null) {
+            $this->persistSyncState($syncState, $hash, $this->extractDocName($response, $existingName));
+        }
+
         return $returnResponse ? $response : null;
+    }
+
+    private function findExistingDocName(string $doctype, array $identityFields): ?string
+    {
+        foreach ($identityFields as $field => $value) {
+            $fieldName = sanitize_text_field((string) $field);
+            $fieldValue = sanitize_text_field((string) $value);
+
+            if ($fieldName === '' || $fieldValue === '') {
+                continue;
+            }
+
+            $response = $this->request(
+                'GET',
+                '/api/resource/' . rawurlencode($doctype) . '?fields=' . rawurlencode(wp_json_encode(['name', $fieldName])) . '&filters=' . rawurlencode(wp_json_encode([[$fieldName, '=', $fieldValue]])) . '&limit_page_length=1'
+            );
+
+            if (! $response['success']) {
+                continue;
+            }
+
+            $body = is_array($response['body']) ? $response['body'] : [];
+            $rows = isset($body['data']) && is_array($body['data']) ? $body['data'] : [];
+            if (! empty($rows[0]['name'])) {
+                return sanitize_text_field((string) $rows[0]['name']);
+            }
+        }
+
+        return null;
+    }
+
+    private function isUnchangedSync(array $syncState, string $hash): bool
+    {
+        $storedHash = $this->readSyncMeta($syncState['entity_type'] ?? '', (int) ($syncState['entity_id'] ?? 0), (string) ($syncState['hash_key'] ?? ''));
+
+        return $storedHash !== '' && hash_equals($storedHash, $hash);
+    }
+
+    private function persistSyncState(array $syncState, string $hash, ?string $docName): void
+    {
+        $entityType = (string) ($syncState['entity_type'] ?? '');
+        $entityId = (int) ($syncState['entity_id'] ?? 0);
+        $hashKey = (string) ($syncState['hash_key'] ?? '');
+        $docnameKey = (string) ($syncState['docname_key'] ?? '');
+
+        if ($entityId <= 0 || $hashKey === '') {
+            return;
+        }
+
+        $this->writeSyncMeta($entityType, $entityId, $hashKey, $hash);
+
+        if ($docnameKey !== '' && $docName !== null && $docName !== '') {
+            $this->writeSyncMeta($entityType, $entityId, $docnameKey, $docName);
+        }
+    }
+
+    private function readSyncMeta(string $entityType, int $entityId, string $metaKey): string
+    {
+        if ($entityId <= 0 || $metaKey === '') {
+            return '';
+        }
+
+        if ($entityType === 'user') {
+            return (string) get_user_meta($entityId, $metaKey, true);
+        }
+
+        if ($entityType === 'post') {
+            return (string) get_post_meta($entityId, $metaKey, true);
+        }
+
+        return '';
+    }
+
+    private function writeSyncMeta(string $entityType, int $entityId, string $metaKey, string $value): void
+    {
+        if ($entityId <= 0 || $metaKey === '') {
+            return;
+        }
+
+        if ($entityType === 'user') {
+            update_user_meta($entityId, $metaKey, $value);
+
+            return;
+        }
+
+        if ($entityType === 'post') {
+            update_post_meta($entityId, $metaKey, $value);
+        }
+    }
+
+    private function extractDocName(array $response, ?string $fallback): ?string
+    {
+        $body = is_array($response['body'] ?? null) ? $response['body'] : [];
+        if (isset($body['data']['name'])) {
+            return sanitize_text_field((string) $body['data']['name']);
+        }
+
+        return $fallback;
     }
 
     private function request(string $method, string $path, array $payload = []): array

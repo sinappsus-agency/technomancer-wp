@@ -10,6 +10,30 @@
     padding: 10px 12px;
 }
 
+.snc-notifuse-form fieldset {
+    margin: 0;
+    padding: 12px;
+    border: 1px solid #dcdcde;
+}
+
+.snc-notifuse-list-selector {
+    display: grid;
+    gap: 8px;
+}
+
+.snc-notifuse-list-selector label,
+.snc-notifuse-consent {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.snc-notifuse-consent input,
+.snc-notifuse-list-selector input {
+    width: auto;
+    margin-top: 2px;
+}
+
 .snc-notifuse-form button {
     cursor: pointer;
 }

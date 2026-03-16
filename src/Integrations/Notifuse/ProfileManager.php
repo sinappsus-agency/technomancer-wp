@@ -61,9 +61,10 @@ final class ProfileManager
         $selected = is_array($selected) ? $selected : [];
         ?>
         <h2>Notifuse Lists</h2>
+        <p class="description">Assign this WordPress user to existing lists from your connected Notifuse workspace. Saving this form updates the remote contact membership; it does not create a new list.</p>
         <table class="form-table">
             <tr>
-                <th><label for="snc_notifuse_list_ids">Assigned Lists</label></th>
+                <th><label for="snc_notifuse_list_ids">Assigned Existing Remote Lists</label></th>
                 <td>
                     <select id="snc_notifuse_list_ids" name="snc_notifuse_list_ids[]" multiple size="6" style="min-width:320px;">
                         <?php foreach ($lists as $list) : ?>
@@ -72,7 +73,7 @@ final class ProfileManager
                             <option value="<?php echo esc_attr($listId); ?>" <?php selected(in_array($listId, $selected, true), true); ?>><?php echo esc_html($label); ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <p class="description">Admin-controlled Notifuse list memberships for this user.</p>
+                    <p class="description">Choose one or more existing Notifuse lists that this user should belong to.</p>
                 </td>
             </tr>
         </table>
@@ -91,9 +92,22 @@ final class ProfileManager
 
     public function renderSubscribeForm(array $attributes = []): string
     {
-        $attributes = shortcode_atts(['button_text' => 'Subscribe', 'list_ids' => ''], $attributes);
+        $attributes = shortcode_atts([
+            'button_text' => 'Subscribe',
+            'list_ids' => '',
+            'show_lists' => '0',
+            'consent_text' => '',
+            'consent_required' => '',
+        ], $attributes);
 
-        return $this->renderForm('subscribe', (string) $attributes['button_text'], (string) $attributes['list_ids']);
+        return $this->renderForm(
+            'subscribe',
+            (string) $attributes['button_text'],
+            (string) $attributes['list_ids'],
+            filter_var($attributes['show_lists'], FILTER_VALIDATE_BOOLEAN),
+            (string) $attributes['consent_text'],
+            (string) $attributes['consent_required']
+        );
     }
 
     public function renderUnsubscribeForm(array $attributes = []): string
@@ -123,7 +137,10 @@ final class ProfileManager
             'first_name' => $firstName,
             'last_name' => $lastName,
             'source' => 'widget_form',
-        ], $listIds);
+        ], $listIds, [
+            'consent_given' => ! empty($_POST['consent_given']),
+            'consent_text' => sanitize_text_field((string) ($_POST['consent_text'] ?? '')),
+        ]);
 
         wp_send_json($result, $result['success'] ? 200 : 400);
     }
@@ -138,21 +155,45 @@ final class ProfileManager
         wp_send_json($result, $result['success'] ? 200 : 400);
     }
 
-    private function renderForm(string $action, string $buttonText, string $listIds): string
+    private function renderForm(string $action, string $buttonText, string $listIds, bool $showLists = false, string $consentText = '', string $consentRequired = ''): string
     {
         $ajaxAction = $action === 'unsubscribe' ? 'snc_notifuse_unsubscribe' : 'snc_notifuse_subscribe';
+        $settings = \Sinappsus\N8nConnector\Core\Settings::get('notifuse', []);
+        $configuredLists = $this->client->getConfiguredFormLists();
+        $defaultListIds = array_values(array_filter(array_map('trim', explode(',', $listIds))));
+        $resolvedConsentText = $consentText !== '' ? $consentText : (string) ($settings['consent_label'] ?? 'I agree to receive updates by email.');
+        $requiresConsent = $consentRequired === '' ? ! empty($settings['require_consent']) : filter_var($consentRequired, FILTER_VALIDATE_BOOLEAN);
         ob_start();
         ?>
         <form class="snc-notifuse-form" method="post" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>">
             <input type="hidden" name="action" value="<?php echo esc_attr($ajaxAction); ?>" />
             <input type="hidden" name="nonce" value="<?php echo esc_attr(wp_create_nonce('snc_notifuse_form')); ?>" />
-            <?php if ($action !== 'unsubscribe' && $listIds !== '') : ?>
+            <?php if ($action !== 'unsubscribe' && ! $showLists && $listIds !== '') : ?>
                 <input type="hidden" name="list_ids" value="<?php echo esc_attr($listIds); ?>" />
             <?php endif; ?>
             <p><input type="email" name="email" placeholder="Email" required /></p>
             <?php if ($action !== 'unsubscribe') : ?>
                 <p><input type="text" name="first_name" placeholder="First name" /></p>
                 <p><input type="text" name="last_name" placeholder="Last name" /></p>
+                <?php if ($showLists && ! empty($configuredLists)) : ?>
+                    <fieldset class="snc-notifuse-list-selector">
+                        <legend>Select lists</legend>
+                        <?php foreach ($configuredLists as $list) : ?>
+                            <?php $listId = (string) ($list['id'] ?? $list['uuid'] ?? ''); ?>
+                            <label>
+                                <input type="checkbox" name="list_ids[]" value="<?php echo esc_attr($listId); ?>" <?php checked(in_array($listId, $defaultListIds, true), true); ?> />
+                                <?php echo esc_html((string) ($list['name'] ?? $listId)); ?>
+                            </label>
+                        <?php endforeach; ?>
+                    </fieldset>
+                <?php endif; ?>
+                <?php if ($resolvedConsentText !== '') : ?>
+                    <label class="snc-notifuse-consent">
+                        <input type="checkbox" name="consent_given" value="1" <?php echo $requiresConsent ? 'required' : ''; ?> />
+                        <span><?php echo esc_html($resolvedConsentText); ?></span>
+                    </label>
+                    <input type="hidden" name="consent_text" value="<?php echo esc_attr($resolvedConsentText); ?>" />
+                <?php endif; ?>
             <?php endif; ?>
             <p><button type="submit"><?php echo esc_html($buttonText); ?></button></p>
             <p class="snc-notifuse-status" aria-live="polite"></p>

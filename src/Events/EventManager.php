@@ -34,15 +34,23 @@ final class EventManager
     {
         add_action('user_register', [$this, 'onUserCreated']);
         add_action('profile_update', [$this, 'onUserUpdated'], 10, 1);
+        add_action('delete_user', [$this, 'onUserDeleted'], 10, 1);
+        add_action('set_user_role', [$this, 'onUserRoleChanged'], 10, 3);
         add_action('wp_login', [$this, 'onUserLogin'], 10, 2);
         add_action('wp_logout', [$this, 'onUserLogout']);
         add_action('after_password_reset', [$this, 'onPasswordReset'], 10, 1);
         add_action('comment_post', [$this, 'onCommentCreated'], 10, 1);
+        add_action('edit_comment', [$this, 'onCommentUpdated'], 10, 1);
+        add_action('delete_comment', [$this, 'onCommentDeleted'], 10, 1);
+        add_action('transition_comment_status', [$this, 'onCommentStatusChanged'], 10, 3);
         add_action('wp_after_insert_post', [$this, 'onPostInserted'], 10, 3);
         add_action('publish_post', [$this, 'onPostPublished'], 10, 1);
         add_action('post_updated', [$this, 'onPostUpdated'], 10, 1);
         add_action('before_delete_post', [$this, 'onPostDeleted'], 10, 1);
+        add_action('trashed_post', [$this, 'onPostTrashed'], 10, 1);
+        add_action('untrashed_post', [$this, 'onPostRestored'], 10, 1);
         add_action('add_attachment', [$this, 'onAttachmentAdded'], 10, 1);
+        add_action('delete_attachment', [$this, 'onAttachmentDeleted'], 10, 1);
 
         if (class_exists('WooCommerce')) {
             add_action('woocommerce_before_checkout_form', [$this, 'onCheckoutStarted']);
@@ -51,6 +59,10 @@ final class EventManager
             add_action('woocommerce_payment_complete', [$this, 'onOrderPaid'], 10, 1);
             add_action('woocommerce_order_status_changed', [$this, 'onOrderStatusChanged'], 10, 3);
             add_action('woocommerce_order_refunded', [$this, 'onOrderRefunded'], 10, 2);
+            add_action('woocommerce_cart_updated', [$this, 'onCartUpdated']);
+            add_action('woocommerce_applied_coupon', [$this, 'onCouponApplied'], 10, 1);
+            add_action('woocommerce_removed_coupon', [$this, 'onCouponRemoved'], 10, 1);
+            add_action('woocommerce_new_product', [$this, 'onProductCreated'], 10, 1);
             add_action('woocommerce_update_product', [$this, 'onProductUpdated'], 10, 1);
             add_action('woocommerce_cart_emptied', [$this, 'onCartAbandoned']);
         }
@@ -67,6 +79,25 @@ final class EventManager
 
         $this->emit('wordpress.user.created', $payload);
         $this->notifuseClient->subscribeUserById($userId, 'registration');
+        $this->notifuseClient->trackCustomEvent(
+            (string) ($payload['entity']['snapshot']['user_email'] ?? ''),
+            'user.signup',
+            ['wp_user_id' => $userId],
+            'signup',
+            null,
+            'wp-user-signup-' . $userId,
+            $payload['entity']['snapshot']
+        );
+        $this->notifuseClient->sendConfiguredTransactional(
+            'welcome_template_id',
+            [
+                'email' => (string) ($payload['entity']['snapshot']['user_email'] ?? ''),
+                'first_name' => (string) ($payload['entity']['snapshot']['display_name'] ?? ''),
+            ],
+            ['user_login' => (string) ($payload['entity']['snapshot']['user_login'] ?? '')],
+            ['source' => 'wordpress.user.created', 'wp_user_id' => $userId],
+            'welcome-user-' . $userId
+        );
     }
 
     public function onUserUpdated(int $userId): void
@@ -79,6 +110,31 @@ final class EventManager
         );
 
         $this->emit('wordpress.user.updated', $payload);
+    }
+
+    public function onUserDeleted(int $userId): void
+    {
+        $payload = $this->payloadBuilder->build(
+            'wordpress.user.deleted',
+            'user',
+            $userId,
+            $this->payloadBuilder->userSnapshot($userId)
+        );
+
+        $this->emit('wordpress.user.deleted', $payload);
+    }
+
+    public function onUserRoleChanged(int $userId, string $role, array $oldRoles): void
+    {
+        $payload = $this->payloadBuilder->build(
+            'wordpress.user.role_changed',
+            'user',
+            $userId,
+            $this->payloadBuilder->userSnapshot($userId),
+            ['old_roles' => $oldRoles, 'new_role' => $role]
+        );
+
+        $this->emit('wordpress.user.role_changed', $payload);
     }
 
     public function onUserLogin(string $userLogin, \WP_User $user): void
@@ -135,6 +191,44 @@ final class EventManager
         $this->emit('wordpress.comment.created', $payload);
     }
 
+    public function onCommentUpdated(int $commentId): void
+    {
+        $payload = $this->payloadBuilder->build(
+            'wordpress.comment.updated',
+            'comment',
+            $commentId,
+            $this->payloadBuilder->commentSnapshot($commentId)
+        );
+
+        $this->emit('wordpress.comment.updated', $payload);
+    }
+
+    public function onCommentDeleted(int $commentId): void
+    {
+        $payload = $this->payloadBuilder->build(
+            'wordpress.comment.deleted',
+            'comment',
+            $commentId,
+            $this->payloadBuilder->commentSnapshot($commentId)
+        );
+
+        $this->emit('wordpress.comment.deleted', $payload);
+    }
+
+    public function onCommentStatusChanged(string $newStatus, string $oldStatus, \WP_Comment $comment): void
+    {
+        $commentId = (int) $comment->comment_ID;
+        $payload = $this->payloadBuilder->build(
+            'wordpress.comment.status_changed',
+            'comment',
+            $commentId,
+            $this->payloadBuilder->commentSnapshot($commentId),
+            ['old_status' => $oldStatus, 'new_status' => $newStatus]
+        );
+
+        $this->emit('wordpress.comment.status_changed', $payload);
+    }
+
     public function onPostInserted(int $postId, \WP_Post $post, bool $update): void
     {
         if ($update || wp_is_post_revision($postId)) {
@@ -181,6 +275,7 @@ final class EventManager
 
     public function onPostDeleted(int $postId): void
     {
+        $post = get_post($postId);
         $payload = $this->payloadBuilder->build(
             'wordpress.post.deleted',
             'post',
@@ -189,6 +284,41 @@ final class EventManager
         );
 
         $this->emit('wordpress.post.deleted', $payload);
+
+        if ($post instanceof \WP_Post && $post->post_type === 'product' && class_exists('WooCommerce')) {
+            $productPayload = $this->payloadBuilder->build(
+                'woocommerce.product.deleted',
+                'product',
+                $postId,
+                $this->payloadBuilder->postSnapshot($postId)
+            );
+
+            $this->emit('woocommerce.product.deleted', $productPayload);
+        }
+    }
+
+    public function onPostTrashed(int $postId): void
+    {
+        $payload = $this->payloadBuilder->build(
+            'wordpress.post.trashed',
+            'post',
+            $postId,
+            $this->payloadBuilder->postSnapshot($postId)
+        );
+
+        $this->emit('wordpress.post.trashed', $payload);
+    }
+
+    public function onPostRestored(int $postId): void
+    {
+        $payload = $this->payloadBuilder->build(
+            'wordpress.post.restored',
+            'post',
+            $postId,
+            $this->payloadBuilder->postSnapshot($postId)
+        );
+
+        $this->emit('wordpress.post.restored', $payload);
     }
 
     public function onAttachmentAdded(int $attachmentId): void
@@ -201,6 +331,18 @@ final class EventManager
         );
 
         $this->emit('wordpress.media.uploaded', $payload);
+    }
+
+    public function onAttachmentDeleted(int $attachmentId): void
+    {
+        $payload = $this->payloadBuilder->build(
+            'wordpress.media.deleted',
+            'attachment',
+            $attachmentId,
+            $this->payloadBuilder->postSnapshot($attachmentId)
+        );
+
+        $this->emit('wordpress.media.deleted', $payload);
     }
 
     public function onOrderCreated(int $orderId): void
@@ -227,6 +369,22 @@ final class EventManager
 
         $this->emit('woocommerce.order.paid', $payload);
         $this->erpnextClient->syncOrder($orderId, 'paid');
+        $this->notifuseClient->trackCustomEvent(
+            (string) ($payload['entity']['snapshot']['email'] ?? ''),
+            'order.paid',
+            $payload['entity']['snapshot'],
+            'purchase',
+            isset($payload['entity']['snapshot']['total']) ? (float) $payload['entity']['snapshot']['total'] : null,
+            'order-paid-' . $orderId,
+            $this->buildOrderContact($orderId)
+        );
+        $this->notifuseClient->sendConfiguredTransactional(
+            'order_paid_template_id',
+            $this->buildOrderContact($orderId),
+            $payload['entity']['snapshot'],
+            ['source' => 'woocommerce.order.paid', 'order_id' => $orderId],
+            'order-paid-' . $orderId
+        );
     }
 
     public function onOrderStatusChanged(int $orderId, string $oldStatus, string $newStatus): void
@@ -265,6 +423,22 @@ final class EventManager
 
         $this->emit('woocommerce.checkout.completed', $payload);
         $this->notifuseClient->subscribeOrderById($orderId, 'checkout');
+        $this->notifuseClient->trackCustomEvent(
+            (string) ($payload['entity']['snapshot']['email'] ?? ''),
+            'order.completed',
+            $payload['entity']['snapshot'],
+            'purchase',
+            isset($payload['entity']['snapshot']['total']) ? (float) $payload['entity']['snapshot']['total'] : null,
+            'order-completed-' . $orderId,
+            $this->buildOrderContact($orderId)
+        );
+        $this->notifuseClient->sendConfiguredTransactional(
+            'order_confirmation_template_id',
+            $this->buildOrderContact($orderId),
+            $payload['entity']['snapshot'],
+            ['source' => 'woocommerce.checkout.completed', 'order_id' => $orderId],
+            'order-confirmation-' . $orderId
+        );
         $this->erpnextClient->syncCustomerFromOrder($orderId);
     }
 
@@ -279,6 +453,73 @@ final class EventManager
         );
 
         $this->emit('woocommerce.order.refunded', $payload);
+        $refundAmount = $this->refundAmount($refundId);
+        $this->notifuseClient->trackCustomEvent(
+            (string) ($payload['entity']['snapshot']['email'] ?? ''),
+            'order.refunded',
+            array_merge($payload['entity']['snapshot'], ['refund_id' => $refundId]),
+            'purchase',
+            $refundAmount === null ? null : (0 - abs($refundAmount)),
+            'order-refunded-' . $refundId,
+            $this->buildOrderContact($orderId)
+        );
+        $this->notifuseClient->sendConfiguredTransactional(
+            'refund_template_id',
+            $this->buildOrderContact($orderId),
+            array_merge($payload['entity']['snapshot'], ['refund_id' => $refundId, 'refund_total' => $refundAmount]),
+            ['source' => 'woocommerce.order.refunded', 'order_id' => $orderId, 'refund_id' => $refundId],
+            'order-refund-' . $refundId
+        );
+    }
+
+    public function onCartUpdated(): void
+    {
+        $payload = $this->payloadBuilder->build(
+            'woocommerce.cart.updated',
+            'cart',
+            0,
+            $this->payloadBuilder->currentCartSnapshot()
+        );
+
+        $this->emit('woocommerce.cart.updated', $payload);
+    }
+
+    public function onCouponApplied(string $couponCode): void
+    {
+        $payload = $this->payloadBuilder->build(
+            'woocommerce.coupon.applied',
+            'coupon',
+            0,
+            ['code' => $couponCode],
+            ['coupon_code' => $couponCode]
+        );
+
+        $this->emit('woocommerce.coupon.applied', $payload);
+    }
+
+    public function onCouponRemoved(string $couponCode): void
+    {
+        $payload = $this->payloadBuilder->build(
+            'woocommerce.coupon.removed',
+            'coupon',
+            0,
+            ['code' => $couponCode],
+            ['coupon_code' => $couponCode]
+        );
+
+        $this->emit('woocommerce.coupon.removed', $payload);
+    }
+
+    public function onProductCreated(int $productId): void
+    {
+        $payload = $this->payloadBuilder->build(
+            'woocommerce.product.created',
+            'product',
+            $productId,
+            $this->payloadBuilder->postSnapshot($productId)
+        );
+
+        $this->emit('woocommerce.product.created', $payload);
     }
 
     public function onProductUpdated(int $productId): void
@@ -312,5 +553,34 @@ final class EventManager
         foreach ($flows as $flow) {
             $this->dispatcher->dispatch($flow, $payload);
         }
+    }
+
+    private function buildOrderContact(int $orderId): array
+    {
+        if (! function_exists('wc_get_order')) {
+            return [];
+        }
+
+        $order = wc_get_order($orderId);
+        if (! $order) {
+            return [];
+        }
+
+        return [
+            'email' => $order->get_billing_email(),
+            'first_name' => $order->get_billing_first_name(),
+            'last_name' => $order->get_billing_last_name(),
+        ];
+    }
+
+    private function refundAmount(int $refundId): ?float
+    {
+        if (! function_exists('wc_get_order')) {
+            return null;
+        }
+
+        $refund = wc_get_order($refundId);
+
+        return $refund ? (float) $refund->get_total() : null;
     }
 }

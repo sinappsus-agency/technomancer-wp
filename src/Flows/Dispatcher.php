@@ -10,21 +10,18 @@ final class Dispatcher
 
     private Logger $logger;
 
+    private PayloadFormatter $payloadFormatter;
+
     public function __construct(FlowRepository $flows, Logger $logger)
     {
         $this->flows = $flows;
         $this->logger = $logger;
+        $this->payloadFormatter = new PayloadFormatter();
     }
 
     public function dispatch(array $flow, array $payload): void
     {
-        if (! isset($payload['delivery']) || ! is_array($payload['delivery'])) {
-            $payload['delivery'] = [
-                'attempt' => 1,
-                'max_attempts' => 3,
-                'queued_at' => gmdate('c'),
-            ];
-        }
+        $payload = $this->payloadFormatter->format($flow, $payload);
 
         wp_schedule_single_event(time() + 1, 'sinappsus_n8n_process_delivery', [$flow['id'], $payload]);
     }
@@ -36,6 +33,8 @@ final class Dispatcher
         if (! $flow || empty($flow['is_enabled']) || empty($flow['webhook_url'])) {
             return;
         }
+
+        $payload = $this->payloadFormatter->format($flow, $payload);
 
         $body = wp_json_encode($payload);
         $signature = hash_hmac('sha256', $body ?: '', (string) ($flow['secret_key'] ?? ''));

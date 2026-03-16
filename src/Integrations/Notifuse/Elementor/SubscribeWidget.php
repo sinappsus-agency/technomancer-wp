@@ -44,12 +44,34 @@ final class SubscribeWidget extends \Elementor\Widget_Base
             'description' => 'Comma-separated Notifuse list IDs.',
             'default' => '',
         ]);
+        $this->add_control('show_lists', [
+            'label' => 'Show Selectable Lists',
+            'type' => \Elementor\Controls_Manager::SWITCHER,
+            'label_on' => 'Yes',
+            'label_off' => 'No',
+            'return_value' => 'yes',
+            'default' => '',
+        ]);
+        $this->add_control('consent_text', [
+            'label' => 'Consent Text',
+            'type' => \Elementor\Controls_Manager::TEXT,
+            'default' => '',
+            'description' => 'Leave blank to use the plugin default consent text.',
+        ]);
+        $this->add_control('consent_required', [
+            'label' => 'Require Consent Checkbox',
+            'type' => \Elementor\Controls_Manager::SWITCHER,
+            'label_on' => 'Yes',
+            'label_off' => 'No',
+            'return_value' => '1',
+            'default' => '',
+        ]);
         $this->end_controls_section();
     }
 
     protected function render(): void
     {
         $settings = $this->get_settings_for_display();
-        echo do_shortcode('[snc_notifuse_subscribe button_text="' . esc_attr((string) ($settings['button_text'] ?? 'Subscribe')) . '" list_ids="' . esc_attr((string) ($settings['list_ids'] ?? '')) . '"]');
+        echo do_shortcode('[snc_notifuse_subscribe button_text="' . esc_attr((string) ($settings['button_text'] ?? 'Subscribe')) . '" list_ids="' . esc_attr((string) ($settings['list_ids'] ?? '')) . '" show_lists="' . esc_attr(! empty($settings['show_lists']) ? '1' : '0') . '" consent_text="' . esc_attr((string) ($settings['consent_text'] ?? '')) . '" consent_required="' . esc_attr((string) ($settings['consent_required'] ?? '')) . '"]');
     }
 }

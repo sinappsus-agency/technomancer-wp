@@ -23,16 +23,15 @@ WordPress plugin for building multiple automation flows that react to WordPress 
 - ERPNext mapping settings for customers and products
 - ERPNext stock verification and sync via ERPNext Bin inventory records
 - Frontend AJAX UX for Notifuse subscribe and unsubscribe forms
+- Flow-level payload previews with saved sample entity IDs and meaningful payload modes
+- Notifuse custom event tracking, consent-aware subscribe forms, selectable frontend lists, and transactional email triggers
+- ERPNext upsert behavior with duplicate protection and unchanged-payload skip logic
 - ERPNext doctype contract diagnostics and manual sync controls
 - Clean internal log system with filtered reads, stats, replay support, and clear action
 - Settings storage for API Access, Notifuse, and ERPNext
 
-## Immediate Next Pass
+## Remaining External Validation
 
-- Expand the event catalog to the full matrix
-- Harden ERPNext object mapping and duplicate protection
-- Add richer Notifuse consent/list management and transactional triggers
-- Add sample payload generation and flow-level payload previews in the admin UI
 - Add live runtime verification against real Notifuse and ERPNext instances
 
 ## REST Endpoints
@@ -45,6 +44,55 @@ WordPress plugin for building multiple automation flows that react to WordPress 
 - `GET /wp-json/sinappsus-n8n/v1/search`
 - `POST /wp-json/sinappsus-n8n/v1/action/meta`
 - `POST /wp-json/sinappsus-n8n/v1/action/order-note`
+
+## n8n Callback Usage
+
+Base callback URL:
+
+`/wp-json/sinappsus-n8n/v1`
+
+Headers for n8n callback requests:
+
+- `Authorization: Bearer YOUR_API_TOKEN`
+- `Content-Type: application/json` for POST requests
+- `X-SINAPPSUS-Signature: HMAC_SHA256(raw_body, signing_secret)` when a signing secret is configured
+- `Origin: https://your-n8n-domain.example` when you use trusted origins
+
+Endpoints n8n should call:
+
+- `GET /entity/{type}/{id}` to read one user, post, page, attachment, or order
+- `GET /search?type=user|post|order&term=...&limit=...` to search records
+- `POST /action/meta` to write one meta field back onto a user, post, or order
+- `POST /action/order-note` to add a WooCommerce order note
+
+Endpoints intended for wp-admin operators rather than n8n bearer-token callbacks:
+
+- `GET /events`
+- `GET /flows`
+- `GET /logs`
+
+Example request bodies:
+
+`POST /action/meta`
+
+```json
+{
+  "entity_type": "order",
+  "entity_id": 1234,
+  "meta_key": "external_invoice_id",
+  "meta_value": "INV-9001"
+}
+```
+
+`POST /action/order-note`
+
+```json
+{
+  "order_id": 1234,
+  "note": "ERP invoice created successfully.",
+  "customer_note": false
+}
+```
 
 ## Notes
 

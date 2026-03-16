@@ -6,6 +6,7 @@ namespace Sinappsus\N8nConnector\Admin;
 
 use Sinappsus\N8nConnector\Core\Settings;
 use Sinappsus\N8nConnector\Events\EventRegistry;
+use Sinappsus\N8nConnector\Events\SamplePayloadFactory;
 use Sinappsus\N8nConnector\Flows\FlowRepository;
 use Sinappsus\N8nConnector\Flows\Logger;
 use Sinappsus\N8nConnector\Integrations\Erpnext\Client as ErpnextClient;
@@ -61,6 +62,9 @@ final class AdminPages
         $trustedOrigins = array_values(array_filter(array_map('trim', $trustedOrigins)));
         $customerMapping = $this->sanitizeMappingSetting($settings['erpnext']['customer_mapping'] ?? []);
         $productMapping = $this->sanitizeMappingSetting($settings['erpnext']['product_mapping'] ?? []);
+        $notifusePublicLists = isset($settings['notifuse']['public_form_list_ids']) && is_array($settings['notifuse']['public_form_list_ids'])
+            ? array_values(array_filter(array_map('sanitize_text_field', $settings['notifuse']['public_form_list_ids'])))
+            : [];
 
         return [
             'api_token' => sanitize_text_field((string) ($settings['api_token'] ?? '')),
@@ -69,10 +73,20 @@ final class AdminPages
             'notifuse' => [
                 'base_url' => esc_url_raw((string) ($settings['notifuse']['base_url'] ?? '')),
                 'api_key' => sanitize_text_field((string) ($settings['notifuse']['api_key'] ?? '')),
+                'workspace_id' => sanitize_text_field((string) ($settings['notifuse']['workspace_id'] ?? '')),
                 'default_list_id' => sanitize_text_field((string) ($settings['notifuse']['default_list_id'] ?? '')),
+                'public_form_list_ids' => $notifusePublicLists,
                 'signup_on_registration' => empty($settings['notifuse']['signup_on_registration']) ? 0 : 1,
                 'signup_on_checkout' => empty($settings['notifuse']['signup_on_checkout']) ? 0 : 1,
                 'allow_unsubscribe' => empty($settings['notifuse']['allow_unsubscribe']) ? 0 : 1,
+                'require_consent' => empty($settings['notifuse']['require_consent']) ? 0 : 1,
+                'consent_label' => sanitize_text_field((string) ($settings['notifuse']['consent_label'] ?? 'I agree to receive updates by email.')),
+                'enable_custom_events' => empty($settings['notifuse']['enable_custom_events']) ? 0 : 1,
+                'enable_transactional_emails' => empty($settings['notifuse']['enable_transactional_emails']) ? 0 : 1,
+                'welcome_template_id' => sanitize_text_field((string) ($settings['notifuse']['welcome_template_id'] ?? '')),
+                'order_confirmation_template_id' => sanitize_text_field((string) ($settings['notifuse']['order_confirmation_template_id'] ?? '')),
+                'order_paid_template_id' => sanitize_text_field((string) ($settings['notifuse']['order_paid_template_id'] ?? '')),
+                'refund_template_id' => sanitize_text_field((string) ($settings['notifuse']['refund_template_id'] ?? '')),
             ],
             'erpnext' => [
                 'host_url' => esc_url_raw((string) ($settings['erpnext']['host_url'] ?? '')),
@@ -152,8 +166,8 @@ final class AdminPages
         <table class="widefat striped" style="max-width:900px;">
             <thead>
                 <tr>
-                    <th>WordPress Source</th>
-                    <th>ERPNext Target Field</th>
+                    <th>WordPress Or WooCommerce Source Field</th>
+                    <th>ERPNext Destination Field Name</th>
                 </tr>
             </thead>
             <tbody>
@@ -167,7 +181,7 @@ final class AdminPages
                 <?php endforeach; ?>
             </tbody>
         </table>
-        <p class="description"><?php echo esc_html($description); ?></p>
+        <p class="description"><?php echo esc_html($description); ?> Leave the ERPNext field empty if you do not want that source value copied over.</p>
         <?php
     }
 
@@ -186,6 +200,10 @@ final class AdminPages
             'webhook_url' => $_POST['webhook_url'] ?? '',
             'secret_key' => $_POST['secret_key'] ?? '',
             'payload_mode' => $_POST['payload_mode'] ?? 'standard',
+            'settings' => [
+                'max_attempts' => max(1, min(10, (int) ($_POST['max_attempts'] ?? 3))),
+                'preview_entity_id' => max(0, (int) ($_POST['preview_entity_id'] ?? 0)),
+            ],
             'is_enabled' => isset($_POST['is_enabled']) ? 1 : 0,
         ]);
 
@@ -219,7 +237,14 @@ final class AdminPages
         ?>
         <div class="wrap">
             <h1>SINAPPSUS n8n Connector</h1>
-            <p>Multi-flow WordPress automation for n8n with plugin-local integrations for Notifuse and ERPNext.</p>
+            <p>Build WordPress and WooCommerce automations that send structured events to n8n, optionally sync data with ERPNext, and optionally push marketing and transactional activity into Notifuse.</p>
+            <?php $this->renderHelpBox('How This Plugin Is Organized', [
+                'Flows: each flow connects one WordPress or WooCommerce event to one n8n webhook.',
+                'Event Catalog: browse available trigger names before building flows.',
+                'API Access: credentials that allow approved n8n workflows to call back into WordPress.',
+                'Notifuse and ERPNext: optional integrations. Configure them only if you plan to use them.',
+                'Logs and Tools: inspect deliveries, replay failures, and send test payloads.',
+            ]); ?>
             <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;max-width:1100px;">
                 <?php $this->card('Active Flows', (string) count(array_filter($flows, static fn(array $flow): bool => ! empty($flow['is_enabled'])))); ?>
                 <?php $this->card('Recent Deliveries', (string) count($logs)); ?>
@@ -235,6 +260,7 @@ final class AdminPages
             <h2 style="margin-top:32px;">API Access</h2>
             <p><strong>Token:</strong> <?php echo esc_html((string) ($settings['api_token'] ?? '')); ?></p>
             <p><strong>Trusted Origins:</strong> <?php echo esc_html(implode(', ', $settings['trusted_origins'] ?? [])); ?></p>
+            <p class="description">If you are setting this up for the first time, start with Event Catalog, then create a flow, then use Tools to send a test payload.</p>
         </div>
         <?php
     }
@@ -245,9 +271,20 @@ final class AdminPages
         $editingId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
         $editingFlow = $editingId > 0 ? $this->flows->find($editingId) : null;
         $definitions = EventRegistry::definitions();
+        $previewFactory = new SamplePayloadFactory();
+        $previewEventKey = (string) ($editingFlow['trigger_key'] ?? '');
+        $previewEntityId = (int) ($editingFlow['settings']['preview_entity_id'] ?? 0);
+        $previewPayload = $previewEventKey !== '' ? $previewFactory->build($previewEventKey, $previewEntityId) : null;
         ?>
         <div class="wrap">
             <h1>Flows</h1>
+            <?php $this->renderHelpBox('What A Flow Means Here', [
+                'A flow is one outbound route from WordPress into one n8n webhook.',
+                'Trigger chooses when the flow fires.',
+                'Webhook URL is the exact n8n webhook that receives the payload.',
+                'Payload mode controls how much context is sent.',
+                'Preview Entity ID is optional and is only used to build better previews and test sends.',
+            ]); ?>
             <div style="display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:24px;align-items:start;">
                 <div>
                     <table class="widefat striped">
@@ -287,7 +324,10 @@ final class AdminPages
                         <table class="form-table">
                             <tr>
                                 <th><label for="snc-name">Name</label></th>
-                                <td><input id="snc-name" class="regular-text" name="name" value="<?php echo esc_attr((string) ($editingFlow['name'] ?? '')); ?>" required /></td>
+                                <td>
+                                    <input id="snc-name" class="regular-text" name="name" value="<?php echo esc_attr((string) ($editingFlow['name'] ?? '')); ?>" required />
+                                    <p class="description">Internal label for your team, for example: Customer welcome webhook or ERP order handoff.</p>
+                                </td>
                             </tr>
                             <tr>
                                 <th><label for="snc-trigger-key">Trigger</label></th>
@@ -300,15 +340,22 @@ final class AdminPages
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
+                                    <p class="description">Choose the WordPress or WooCommerce event that should send data to n8n.</p>
                                 </td>
                             </tr>
                             <tr>
                                 <th><label for="snc-webhook-url">Webhook URL</label></th>
-                                <td><input id="snc-webhook-url" class="regular-text" name="webhook_url" type="url" value="<?php echo esc_attr((string) ($editingFlow['webhook_url'] ?? '')); ?>" required /></td>
+                                <td>
+                                    <input id="snc-webhook-url" class="regular-text" name="webhook_url" type="url" value="<?php echo esc_attr((string) ($editingFlow['webhook_url'] ?? '')); ?>" required />
+                                    <p class="description">Paste the exact n8n webhook endpoint that should receive this event.</p>
+                                </td>
                             </tr>
                             <tr>
                                 <th><label for="snc-secret-key">Signing Secret</label></th>
-                                <td><input id="snc-secret-key" class="regular-text" name="secret_key" value="<?php echo esc_attr((string) ($editingFlow['secret_key'] ?? '')); ?>" /></td>
+                                <td>
+                                    <input id="snc-secret-key" class="regular-text" name="secret_key" value="<?php echo esc_attr((string) ($editingFlow['secret_key'] ?? '')); ?>" />
+                                    <p class="description">Optional shared secret used to sign outbound payloads so n8n can verify they came from WordPress.</p>
+                                </td>
                             </tr>
                             <tr>
                                 <th><label for="snc-payload-mode">Payload Mode</label></th>
@@ -318,15 +365,36 @@ final class AdminPages
                                         <option value="standard" <?php selected((string) ($editingFlow['payload_mode'] ?? 'standard'), 'standard'); ?>>Standard</option>
                                         <option value="full" <?php selected((string) ($editingFlow['payload_mode'] ?? 'standard'), 'full'); ?>>Full</option>
                                     </select>
+                                    <p class="description">Minimal sends only identity and changes. Standard sends the normal event snapshot. Full adds extra WordPress and flow context.</p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="snc-max-attempts">Max Attempts</label></th>
+                                <td>
+                                    <input id="snc-max-attempts" class="small-text" name="max_attempts" type="number" min="1" max="10" value="<?php echo esc_attr((string) ($editingFlow['settings']['max_attempts'] ?? 3)); ?>" />
+                                    <p class="description">How many times WordPress should retry delivery before marking the payload as dead letter.</p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="snc-preview-entity-id">Preview Entity ID</label></th>
+                                <td>
+                                    <input id="snc-preview-entity-id" class="small-text" name="preview_entity_id" type="number" min="0" value="<?php echo esc_attr((string) ($editingFlow['settings']['preview_entity_id'] ?? 0)); ?>" />
+                                    <p class="description">Optional existing post, product, order, comment, or user ID. Leave blank if you only want a generic sample payload.</p>
                                 </td>
                             </tr>
                             <tr>
                                 <th>Enabled</th>
-                                <td><label><input type="checkbox" name="is_enabled" value="1" <?php checked(! empty($editingFlow['is_enabled']), true); ?> /> Enable this flow</label></td>
+                                <td>
+                                    <label><input type="checkbox" name="is_enabled" value="1" <?php checked(! empty($editingFlow['is_enabled']), true); ?> /> Enable this flow</label>
+                                    <p class="description">Disabled flows stay saved but do not send any payloads.</p>
+                                </td>
                             </tr>
                         </table>
                         <?php submit_button($editingFlow ? 'Update Flow' : 'Create Flow'); ?>
                     </form>
+                    <h2>Payload Preview</h2>
+                    <p class="description">This is the approximate JSON structure n8n will receive for the current flow configuration. Save the flow first if you want the preview to follow a specific trigger.</p>
+                    <textarea readonly class="large-text code" rows="18"><?php echo esc_textarea($previewPayload === null ? 'Save a flow with a trigger to generate a sample payload preview.' : (string) wp_json_encode($previewPayload, JSON_PRETTY_PRINT)); ?></textarea>
                 </div>
             </div>
         </div>
@@ -339,6 +407,12 @@ final class AdminPages
         ?>
         <div class="wrap">
             <h1>Event Catalog</h1>
+            <?php $this->renderHelpBox('How To Use This Screen', [
+                'Event is the trigger key you will select inside a flow.',
+                'Hook is the native WordPress or WooCommerce hook behind that event.',
+                'Entity shows the object type that the payload is centered on.',
+                'Notes explain what kind of snapshot or change metadata is included.',
+            ]); ?>
             <table class="widefat striped">
                 <thead>
                     <tr>
@@ -368,33 +442,135 @@ final class AdminPages
     public function renderApiAccess(): void
     {
         $settings = Settings::all();
+        $apiBase = untrailingslashit(rest_url('sinappsus-n8n/v1'));
+        $token = (string) ($settings['api_token'] ?? '');
+        $secret = (string) ($settings['signing_secret'] ?? '');
+        $trustedOrigins = isset($settings['trusted_origins']) && is_array($settings['trusted_origins']) ? $settings['trusted_origins'] : [];
         ?>
         <div class="wrap">
             <h1>API Access</h1>
+            <?php $this->renderHelpBox('What These Credentials Are For', [
+                'These values are used when n8n needs to call back into WordPress through this plugin API.',
+                'API Token is the bearer token n8n sends with requests.',
+                'Signing Secret is used for HMAC verification on inbound requests.',
+                'Trusted Origins is a second safety layer and should contain the domains your n8n instance actually uses.',
+            ]); ?>
+            <?php $this->renderHelpBox('Start Here For n8n', [
+                'Base callback URL: ' . $apiBase,
+                'Use the HTTP Request node in n8n for all callback calls into WordPress.',
+                'Every callback request should send Authorization: Bearer ' . ($token !== '' ? $token : 'YOUR_API_TOKEN'),
+                'If a signing secret is set, calculate X-SINAPPSUS-Signature as HMAC-SHA256 of the raw request body using that secret.',
+                empty($trustedOrigins) ? 'Trusted Origins is currently optional because none are configured.' : 'If your n8n instance sends an Origin header, it must match one of the trusted origins listed below.',
+            ]); ?>
             <form method="post" action="options.php">
                 <?php settings_fields('snc_settings_group'); ?>
                 <table class="form-table">
                     <tr>
                         <th><label for="snc-api-token">API Token</label></th>
-                        <td><input id="snc-api-token" class="regular-text" name="snc_settings[api_token]" value="<?php echo esc_attr((string) ($settings['api_token'] ?? '')); ?>" /></td>
+                        <td>
+                            <input id="snc-api-token" class="regular-text" name="snc_settings[api_token]" value="<?php echo esc_attr((string) ($settings['api_token'] ?? '')); ?>" />
+                            <p class="description">Paste this into n8n as the bearer token for plugin API calls.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th><label for="snc-signing-secret">Signing Secret</label></th>
                         <td>
                             <input id="snc-signing-secret" class="regular-text code" name="snc_settings[signing_secret]" value="<?php echo esc_attr((string) ($settings['signing_secret'] ?? '')); ?>" />
-                            <p class="description">Used for HMAC request signing from n8n into WordPress.</p>
+                            <p class="description">Use the same secret in n8n when sending signed requests back into WordPress.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-trusted-origins">Trusted Origins</label></th>
                         <td>
                             <textarea id="snc-trusted-origins" class="large-text code" rows="6" name="snc_settings[trusted_origins]"><?php echo esc_textarea(implode(PHP_EOL, $settings['trusted_origins'] ?? [])); ?></textarea>
-                            <p class="description">One origin per line. Requests still require a valid bearer token and signature.</p>
+                            <p class="description">One origin per line, for example https://automation.example.com. This does not replace the token or signature checks.</p>
                         </td>
                     </tr>
                 </table>
                 <?php submit_button('Save API Settings'); ?>
             </form>
+
+            <h2>Base Callback URL</h2>
+            <p class="description">This is the base path n8n should call for plugin API operations.</p>
+            <textarea readonly class="large-text code" rows="2"><?php echo esc_textarea($apiBase); ?></textarea>
+
+            <h2>Headers Required From n8n</h2>
+            <table class="widefat striped" style="max-width:1100px;">
+                <thead>
+                    <tr>
+                        <th>Header</th>
+                        <th>Required</th>
+                        <th>Value</th>
+                        <th>Why It Exists</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>Authorization</code></td>
+                        <td>Yes</td>
+                        <td><code>Bearer <?php echo esc_html($token !== '' ? $token : 'YOUR_API_TOKEN'); ?></code></td>
+                        <td>Authenticates the request as an approved caller.</td>
+                    </tr>
+                    <tr>
+                        <td><code>X-SINAPPSUS-Signature</code></td>
+                        <td><?php echo $secret !== '' ? 'Yes' : 'Only if you configure a signing secret'; ?></td>
+                        <td><code>HMAC_SHA256(raw_body, signing_secret)</code></td>
+                        <td>Prevents tampering with callback payloads.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Origin</code></td>
+                        <td><?php echo ! empty($trustedOrigins) ? 'Recommended when your n8n instance sends it' : 'Optional'; ?></td>
+                        <td><code>https://your-n8n-domain.example</code></td>
+                        <td>Must match a trusted origin if origin restrictions are configured.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Content-Type</code></td>
+                        <td>For POST requests</td>
+                        <td><code>application/json</code></td>
+                        <td>Ensures WordPress parses the JSON request body correctly.</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>Endpoint Reference</h2>
+            <p class="description">Admin-only endpoints below are intended for wp-admin users. Callback endpoints are the ones n8n should call with the bearer token and signature.</p>
+            <?php $this->renderApiEndpointTable($apiBase); ?>
+
+            <h2>Typical n8n Use Cases</h2>
+            <?php $this->renderHelpBox('Example Callback Patterns', [
+                'Get a user record before pushing the customer into another system.',
+                'Search for a post or order from a lookup term coming from an upstream workflow.',
+                'Write metadata back to a WordPress user, post, or WooCommerce order after an external process completes.',
+                'Add an internal or customer-visible order note from n8n after fulfillment, ERP, or support activity.',
+            ]); ?>
+
+            <h3>1. Read A User From n8n</h3>
+            <p class="description">Use this when a webhook flow contains a WordPress user ID and you want the latest profile data before continuing in n8n.</p>
+            <?php $this->renderCodeBlock("GET {$apiBase}/entity/user/123\nAuthorization: Bearer {$token}\nX-SINAPPSUS-Signature: <signature of empty body if your secret is enabled>"); ?>
+
+            <h3>2. Search For An Order Or Post</h3>
+            <p class="description">Use this when n8n only has a partial term such as an email, title fragment, or order reference and needs WordPress to perform the lookup.</p>
+            <?php $this->renderCodeBlock("GET {$apiBase}/search?type=order&term=smith&limit=10\nAuthorization: Bearer {$token}\nX-SINAPPSUS-Signature: <signature of empty body if your secret is enabled>"); ?>
+
+            <h3>3. Update Meta After An External Step</h3>
+            <p class="description">Use this to store external IDs, processing flags, CRM status, or sync markers back onto a WordPress entity.</p>
+            <?php $this->renderCodeBlock("POST {$apiBase}/action/meta\nContent-Type: application/json\nAuthorization: Bearer {$token}\nX-SINAPPSUS-Signature: <signature of raw JSON body>\n\n{\n  \"entity_type\": \"order\",\n  \"entity_id\": 1234,\n  \"meta_key\": \"external_invoice_id\",\n  \"meta_value\": \"INV-9001\"\n}"); ?>
+
+            <h3>4. Add An Order Note</h3>
+            <p class="description">Use this when n8n wants to record fulfillment, ERP, or support activity on a WooCommerce order.</p>
+            <?php $this->renderCodeBlock("POST {$apiBase}/action/order-note\nContent-Type: application/json\nAuthorization: Bearer {$token}\nX-SINAPPSUS-Signature: <signature of raw JSON body>\n\n{\n  \"order_id\": 1234,\n  \"note\": \"ERP invoice created successfully.\",\n  \"customer_note\": false\n}"); ?>
+
+            <h2>What n8n Should Not Use</h2>
+            <p class="description">These endpoints are present for site administrators inside WordPress, not for bearer-token callback use from n8n.</p>
+            <ul>
+                <li><code><?php echo esc_html($apiBase . '/events'); ?></code> is admin-only and meant for browsing available trigger definitions.</li>
+                <li><code><?php echo esc_html($apiBase . '/flows'); ?></code> is admin-only and meant for inspecting saved flows from wp-admin.</li>
+                <li><code><?php echo esc_html($apiBase . '/logs'); ?></code> is admin-only and meant for operators troubleshooting deliveries.</li>
+            </ul>
+
+            <h2>Signing Reference</h2>
+            <p class="description">When a signing secret is configured, hash the exact raw request body with HMAC-SHA256 and send the result in <code>X-SINAPPSUS-Signature</code>. For GET requests the raw body is empty.</p>
+            <?php $this->renderCodeBlock("Pseudo logic\nsignature = HMAC_SHA256(raw_request_body, SIGNING_SECRET)\nheader['X-SINAPPSUS-Signature'] = signature"); ?>
         </div>
         <?php
     }
@@ -404,9 +580,16 @@ final class AdminPages
         $settings = Settings::all();
         $notifuse = $settings['notifuse'] ?? [];
         $lists = $this->notifuseClient->getLists();
+        $publicFormListIds = is_array($notifuse['public_form_list_ids'] ?? null) ? $notifuse['public_form_list_ids'] : [];
         ?>
         <div class="wrap">
             <h1>Notifuse</h1>
+            <?php $this->renderHelpBox('What Belongs On This Page', [
+                'Use this page only if you want WordPress to push contacts, events, or transactional triggers into an existing Notifuse workspace.',
+                'This screen reads lists that already exist in Notifuse. It does not create new lists in Notifuse for you.',
+                'Fallback Auto-Subscribe List ID should be an existing remote Notifuse list ID.',
+                'Frontend list selection lets you choose which existing Notifuse lists visitors are allowed to subscribe to on forms.',
+            ]); ?>
             <?php if (isset($_GET['notifuse_test'])) : ?>
                 <div class="notice <?php echo $_GET['notifuse_test'] === 'success' ? 'notice-success' : 'notice-error'; ?>"><p><?php echo esc_html((string) ($_GET['message'] ?? '')); ?></p></div>
             <?php endif; ?>
@@ -415,39 +598,109 @@ final class AdminPages
                 <table class="form-table">
                     <tr>
                         <th><label for="snc-notifuse-base-url">Base URL</label></th>
-                        <td><input id="snc-notifuse-base-url" class="regular-text" name="snc_settings[notifuse][base_url]" value="<?php echo esc_attr((string) ($notifuse['base_url'] ?? '')); ?>" /></td>
+                        <td>
+                            <input id="snc-notifuse-base-url" class="regular-text" name="snc_settings[notifuse][base_url]" value="<?php echo esc_attr((string) ($notifuse['base_url'] ?? '')); ?>" />
+                            <p class="description">Base URL of your existing Notifuse instance, for example https://v3.notifuse.com or your self-hosted domain.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th><label for="snc-notifuse-api-key">API Key</label></th>
-                        <td><input id="snc-notifuse-api-key" class="regular-text" name="snc_settings[notifuse][api_key]" value="<?php echo esc_attr((string) ($notifuse['api_key'] ?? '')); ?>" /></td>
-                    </tr>
-                    <tr>
-                        <th><label for="snc-notifuse-list-id">Default List ID</label></th>
-                        <td><input id="snc-notifuse-list-id" class="regular-text" name="snc_settings[notifuse][default_list_id]" value="<?php echo esc_attr((string) ($notifuse['default_list_id'] ?? '')); ?>" /></td>
-                    </tr>
-                    <tr>
-                        <th>Signup Sources</th>
                         <td>
-                            <label><input type="checkbox" name="snc_settings[notifuse][signup_on_registration]" value="1" <?php checked(! empty($notifuse['signup_on_registration']), true); ?> /> Subscribe on user registration</label><br />
-                            <label><input type="checkbox" name="snc_settings[notifuse][signup_on_checkout]" value="1" <?php checked(! empty($notifuse['signup_on_checkout']), true); ?> /> Subscribe on WooCommerce checkout</label>
-                            <br /><label><input type="checkbox" name="snc_settings[notifuse][allow_unsubscribe]" value="1" <?php checked(! empty($notifuse['allow_unsubscribe']), true); ?> /> Allow unsubscribe forms and widget</label>
+                            <input id="snc-notifuse-api-key" class="regular-text" name="snc_settings[notifuse][api_key]" value="<?php echo esc_attr((string) ($notifuse['api_key'] ?? '')); ?>" />
+                            <p class="description">API key with permission to read lists, upsert contacts, track events, and send transactional notifications.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="snc-notifuse-workspace-id">Workspace ID</label></th>
+                        <td>
+                            <input id="snc-notifuse-workspace-id" class="regular-text" name="snc_settings[notifuse][workspace_id]" value="<?php echo esc_attr((string) ($notifuse['workspace_id'] ?? '')); ?>" />
+                            <p class="description">Required for Notifuse custom events and transactional sends. Use the workspace that owns the templates and lists you want this plugin to touch.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="snc-notifuse-list-id">Fallback Auto-Subscribe List ID</label></th>
+                        <td>
+                            <input id="snc-notifuse-list-id" class="regular-text" name="snc_settings[notifuse][default_list_id]" value="<?php echo esc_attr((string) ($notifuse['default_list_id'] ?? '')); ?>" />
+                            <p class="description">Enter an existing Notifuse list ID. The plugin will add contacts to that remote list when no more specific list selection is provided.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="snc-notifuse-public-list-ids">Frontend Selectable Existing Lists</label></th>
+                        <td>
+                            <select id="snc-notifuse-public-list-ids" name="snc_settings[notifuse][public_form_list_ids][]" multiple size="6" style="min-width:320px;">
+                                <?php foreach ($lists as $list) : ?>
+                                    <?php $listId = (string) ($list['id'] ?? $list['uuid'] ?? ''); ?>
+                                    <?php $label = (string) ($list['name'] ?? $listId); ?>
+                                    <option value="<?php echo esc_attr($listId); ?>" <?php selected(in_array($listId, $publicFormListIds, true), true); ?>><?php echo esc_html($label); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description">Choose which existing Notifuse lists site visitors may pick from in shortcode and Elementor subscribe forms.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Automation Behavior</th>
+                        <td>
+                            <label><input type="checkbox" name="snc_settings[notifuse][signup_on_registration]" value="1" <?php checked(! empty($notifuse['signup_on_registration']), true); ?> /> Auto-subscribe newly registered WordPress users</label><br />
+                            <label><input type="checkbox" name="snc_settings[notifuse][signup_on_checkout]" value="1" <?php checked(! empty($notifuse['signup_on_checkout']), true); ?> /> Auto-subscribe WooCommerce customers after checkout</label>
+                            <br /><label><input type="checkbox" name="snc_settings[notifuse][allow_unsubscribe]" value="1" <?php checked(! empty($notifuse['allow_unsubscribe']), true); ?> /> Enable unsubscribe shortcodes and Elementor widget</label>
+                            <br /><label><input type="checkbox" name="snc_settings[notifuse][require_consent]" value="1" <?php checked(! empty($notifuse['require_consent']), true); ?> /> Require an explicit consent checkbox on subscribe forms</label>
+                            <br /><label><input type="checkbox" name="snc_settings[notifuse][enable_custom_events]" value="1" <?php checked(! empty($notifuse['enable_custom_events']), true); ?> /> Send custom events such as signup, order paid, and refund activity into Notifuse</label>
+                            <br /><label><input type="checkbox" name="snc_settings[notifuse][enable_transactional_emails]" value="1" <?php checked(! empty($notifuse['enable_transactional_emails']), true); ?> /> Trigger transactional notifications from WordPress and WooCommerce events</label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="snc-notifuse-consent-label">Consent Label</label></th>
+                        <td>
+                            <input id="snc-notifuse-consent-label" class="regular-text" name="snc_settings[notifuse][consent_label]" value="<?php echo esc_attr((string) ($notifuse['consent_label'] ?? 'I agree to receive updates by email.')); ?>" />
+                            <p class="description">The exact sentence visitors see next to the opt-in checkbox on subscribe forms.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="snc-notifuse-welcome-template">Welcome Transactional Template ID</label></th>
+                        <td>
+                            <input id="snc-notifuse-welcome-template" class="regular-text" name="snc_settings[notifuse][welcome_template_id]" value="<?php echo esc_attr((string) ($notifuse['welcome_template_id'] ?? '')); ?>" />
+                            <p class="description">Existing Notifuse notification ID to send when a new WordPress user is created.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="snc-notifuse-order-confirmation-template">Order Confirmation Transactional Template ID</label></th>
+                        <td>
+                            <input id="snc-notifuse-order-confirmation-template" class="regular-text" name="snc_settings[notifuse][order_confirmation_template_id]" value="<?php echo esc_attr((string) ($notifuse['order_confirmation_template_id'] ?? '')); ?>" />
+                            <p class="description">Existing Notifuse notification ID to send when checkout completes.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="snc-notifuse-order-paid-template">Order Paid Transactional Template ID</label></th>
+                        <td>
+                            <input id="snc-notifuse-order-paid-template" class="regular-text" name="snc_settings[notifuse][order_paid_template_id]" value="<?php echo esc_attr((string) ($notifuse['order_paid_template_id'] ?? '')); ?>" />
+                            <p class="description">Existing Notifuse notification ID to send when WooCommerce marks an order as paid.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="snc-notifuse-refund-template">Refund Transactional Template ID</label></th>
+                        <td>
+                            <input id="snc-notifuse-refund-template" class="regular-text" name="snc_settings[notifuse][refund_template_id]" value="<?php echo esc_attr((string) ($notifuse['refund_template_id'] ?? '')); ?>" />
+                            <p class="description">Existing Notifuse notification ID to send when an order refund is created.</p>
                         </td>
                     </tr>
                 </table>
                 <?php submit_button('Save Notifuse Settings'); ?>
             </form>
             <h2>Available Lists</h2>
+            <p class="description">Read-only view of lists returned by your current Notifuse credentials. If this table is empty, the plugin cannot yet see your remote workspace lists.</p>
             <table class="widefat striped" style="max-width:720px;">
-                <thead><tr><th>List ID</th><th>Name</th></tr></thead>
+                <thead><tr><th>List ID</th><th>Name</th><th>Visibility</th><th>Status</th></tr></thead>
                 <tbody>
                 <?php foreach ($lists as $list) : ?>
                     <tr>
                         <td><?php echo esc_html((string) ($list['id'] ?? $list['uuid'] ?? '')); ?></td>
                         <td><?php echo esc_html((string) ($list['name'] ?? '')); ?></td>
+                        <td><?php echo esc_html((string) ($list['visibility'] ?? (! empty($list['is_public']) ? 'public' : 'private'))); ?></td>
+                        <td><?php echo esc_html((string) ($list['status'] ?? 'active')); ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($lists)) : ?>
-                    <tr><td colspan="2">No lists loaded yet. Save credentials and test the connection first.</td></tr>
+                    <tr><td colspan="4">No lists loaded yet. Save credentials and test the connection first.</td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
@@ -456,7 +709,7 @@ final class AdminPages
                 <?php wp_nonce_field('snc_test_notifuse'); ?>
                 <?php submit_button('Test Notifuse Connection', 'secondary'); ?>
             </form>
-            <p>Elementor widgets available when Elementor is active: subscribe and unsubscribe. Shortcodes: <code>[snc_notifuse_subscribe]</code> and <code>[snc_notifuse_unsubscribe]</code>.</p>
+            <p>Elementor widgets available when Elementor is active: subscribe and unsubscribe. Shortcodes: <code>[snc_notifuse_subscribe]</code> and <code>[snc_notifuse_unsubscribe]</code>. Subscribe forms can optionally show the frontend-selectable lists and the consent checkbox configured here.</p>
         </div>
         <?php
     }
@@ -468,6 +721,12 @@ final class AdminPages
         ?>
         <div class="wrap">
             <h1>ERPNext</h1>
+            <?php $this->renderHelpBox('What This Page Controls', [
+                'Use this page only if WordPress should sync customers, orders, products, or stock with an existing ERPNext instance.',
+                'The connection settings below do not create ERPNext doctypes. They point the plugin at your existing ERPNext site and API credentials.',
+                'Sync toggles decide which kinds of WordPress data the plugin is allowed to send or pull.',
+                'Mapping tables let you copy WordPress fields into custom ERPNext fields when names do not match.',
+            ]); ?>
             <?php if (isset($_GET['erpnext_test'])) : ?>
                 <div class="notice <?php echo $_GET['erpnext_test'] === 'success' ? 'notice-success' : 'notice-error'; ?>"><p><?php echo esc_html((string) ($_GET['message'] ?? '')); ?></p></div>
             <?php endif; ?>
@@ -482,47 +741,74 @@ final class AdminPages
                 <table class="form-table">
                     <tr>
                         <th><label for="snc-erp-host-url">Host URL</label></th>
-                        <td><input id="snc-erp-host-url" class="regular-text" name="snc_settings[erpnext][host_url]" value="<?php echo esc_attr((string) ($erpnext['host_url'] ?? '')); ?>" /></td>
+                        <td>
+                            <input id="snc-erp-host-url" class="regular-text" name="snc_settings[erpnext][host_url]" value="<?php echo esc_attr((string) ($erpnext['host_url'] ?? '')); ?>" />
+                            <p class="description">Base URL of your ERPNext site, for example https://erp.example.com.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-api-key">API Key</label></th>
-                        <td><input id="snc-erp-api-key" class="regular-text" name="snc_settings[erpnext][api_key]" value="<?php echo esc_attr((string) ($erpnext['api_key'] ?? '')); ?>" /></td>
+                        <td>
+                            <input id="snc-erp-api-key" class="regular-text" name="snc_settings[erpnext][api_key]" value="<?php echo esc_attr((string) ($erpnext['api_key'] ?? '')); ?>" />
+                            <p class="description">API credentials used for ERPNext REST calls.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-api-secret">API Secret</label></th>
-                        <td><input id="snc-erp-api-secret" class="regular-text" name="snc_settings[erpnext][api_secret]" value="<?php echo esc_attr((string) ($erpnext['api_secret'] ?? '')); ?>" /></td>
+                        <td>
+                            <input id="snc-erp-api-secret" class="regular-text" name="snc_settings[erpnext][api_secret]" value="<?php echo esc_attr((string) ($erpnext['api_secret'] ?? '')); ?>" />
+                            <p class="description">Keep this matched to the API key above.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-company">Company</label></th>
-                        <td><input id="snc-erp-company" class="regular-text" name="snc_settings[erpnext][company]" value="<?php echo esc_attr((string) ($erpnext['company'] ?? '')); ?>" /></td>
+                        <td>
+                            <input id="snc-erp-company" class="regular-text" name="snc_settings[erpnext][company]" value="<?php echo esc_attr((string) ($erpnext['company'] ?? '')); ?>" />
+                            <p class="description">Default ERPNext company name used for Sales Order creation.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-warehouse">Warehouse</label></th>
-                        <td><input id="snc-erp-warehouse" class="regular-text" name="snc_settings[erpnext][warehouse]" value="<?php echo esc_attr((string) ($erpnext['warehouse'] ?? '')); ?>" /></td>
+                        <td>
+                            <input id="snc-erp-warehouse" class="regular-text" name="snc_settings[erpnext][warehouse]" value="<?php echo esc_attr((string) ($erpnext['warehouse'] ?? '')); ?>" />
+                            <p class="description">Default warehouse used when importing stock or exporting products.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-item-group">Item Group</label></th>
-                        <td><input id="snc-erp-item-group" class="regular-text" name="snc_settings[erpnext][item_group]" value="<?php echo esc_attr((string) ($erpnext['item_group'] ?? '')); ?>" /></td>
+                        <td>
+                            <input id="snc-erp-item-group" class="regular-text" name="snc_settings[erpnext][item_group]" value="<?php echo esc_attr((string) ($erpnext['item_group'] ?? '')); ?>" />
+                            <p class="description">Fallback ERPNext item group for exported WooCommerce products.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-price-list">Price List</label></th>
-                        <td><input id="snc-erp-price-list" class="regular-text" name="snc_settings[erpnext][price_list]" value="<?php echo esc_attr((string) ($erpnext['price_list'] ?? '')); ?>" /></td>
+                        <td>
+                            <input id="snc-erp-price-list" class="regular-text" name="snc_settings[erpnext][price_list]" value="<?php echo esc_attr((string) ($erpnext['price_list'] ?? '')); ?>" />
+                            <p class="description">Optional ERPNext price list reference if your process depends on one.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-customer-group">Customer Group</label></th>
-                        <td><input id="snc-erp-customer-group" class="regular-text" name="snc_settings[erpnext][customer_group]" value="<?php echo esc_attr((string) ($erpnext['customer_group'] ?? 'Commercial')); ?>" /></td>
+                        <td>
+                            <input id="snc-erp-customer-group" class="regular-text" name="snc_settings[erpnext][customer_group]" value="<?php echo esc_attr((string) ($erpnext['customer_group'] ?? 'Commercial')); ?>" /></td>
+                            <p class="description">Fallback ERPNext customer group when WordPress users do not already store one.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-territory">Territory</label></th>
-                        <td><input id="snc-erp-territory" class="regular-text" name="snc_settings[erpnext][territory]" value="<?php echo esc_attr((string) ($erpnext['territory'] ?? 'All Territories')); ?>" /></td>
+                        <td>
+                            <input id="snc-erp-territory" class="regular-text" name="snc_settings[erpnext][territory]" value="<?php echo esc_attr((string) ($erpnext['territory'] ?? 'All Territories')); ?>" />
+                            <p class="description">Fallback ERPNext territory for synced customers.</p>
+                        </td>
                     </tr>
                     <tr>
-                        <th>Sync Toggles</th>
+                        <th>Sync Permissions</th>
                         <td>
-                            <label><input type="checkbox" name="snc_settings[erpnext][sync_customers]" value="1" <?php checked(! empty($erpnext['sync_customers']), true); ?> /> Sync customers</label><br />
-                            <label><input type="checkbox" name="snc_settings[erpnext][sync_orders]" value="1" <?php checked(! empty($erpnext['sync_orders']), true); ?> /> Sync orders</label><br />
-                            <label><input type="checkbox" name="snc_settings[erpnext][sync_products]" value="1" <?php checked(! empty($erpnext['sync_products']), true); ?> /> Sync products/catalog</label><br />
-                            <label><input type="checkbox" name="snc_settings[erpnext][sync_stock]" value="1" <?php checked(! empty($erpnext['sync_stock']), true); ?> /> Sync stock</label>
+                            <label><input type="checkbox" name="snc_settings[erpnext][sync_customers]" value="1" <?php checked(! empty($erpnext['sync_customers']), true); ?> /> Allow WordPress and WooCommerce customers to sync into ERPNext</label><br />
+                            <label><input type="checkbox" name="snc_settings[erpnext][sync_orders]" value="1" <?php checked(! empty($erpnext['sync_orders']), true); ?> /> Allow WooCommerce orders to sync into ERPNext</label><br />
+                            <label><input type="checkbox" name="snc_settings[erpnext][sync_products]" value="1" <?php checked(! empty($erpnext['sync_products']), true); ?> /> Allow product catalog import and export</label><br />
+                            <label><input type="checkbox" name="snc_settings[erpnext][sync_stock]" value="1" <?php checked(! empty($erpnext['sync_stock']), true); ?> /> Allow stock synchronization jobs</label>
                         </td>
                     </tr>
                     <tr>
@@ -532,6 +818,7 @@ final class AdminPages
                                 <option value="erpnext" <?php selected((string) ($erpnext['stock_source'] ?? 'erpnext'), 'erpnext'); ?>>ERPNext</option>
                                 <option value="woocommerce" <?php selected((string) ($erpnext['stock_source'] ?? 'erpnext'), 'woocommerce'); ?>>WooCommerce</option>
                             </select>
+                            <p class="description">Choose which system should be treated as the stock authority during sync operations.</p>
                         </td>
                     </tr>
                     <tr>
@@ -543,6 +830,7 @@ final class AdminPages
                                 <option value="twicedaily" <?php selected((string) ($erpnext['sync_interval'] ?? 'hourly'), 'twicedaily'); ?>>Twice daily</option>
                                 <option value="daily" <?php selected((string) ($erpnext['sync_interval'] ?? 'hourly'), 'daily'); ?>>Daily</option>
                             </select>
+                            <p class="description">How often the scheduled product and stock sync jobs should run.</p>
                         </td>
                     </tr>
                 </table>
@@ -563,6 +851,7 @@ final class AdminPages
                 <?php submit_button('Run ERP Contract Diagnostics', 'secondary'); ?>
             </form>
             <h2>Catalog and Stock Tools</h2>
+            <p class="description">These tools act on your live WooCommerce and ERPNext data. They do not change the saved configuration above.</p>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-bottom:16px;">
                 <input type="hidden" name="action" value="snc_erp_import_products" />
                 <?php wp_nonce_field('snc_erp_import_products'); ?>
@@ -594,7 +883,7 @@ final class AdminPages
                 <?php wp_nonce_field('snc_erp_run_stock_sync'); ?>
                 <?php submit_button('Run Stock Sync Now', 'secondary', 'submit', false); ?>
             </form>
-            <p>ERP profile fields are injected into registration and user profile screens for customer metadata capture.</p>
+            <p>ERP profile fields are also added to WordPress registration and user profile screens so staff can store ERP-specific customer metadata without leaving WordPress.</p>
         </div>
         <?php
     }
@@ -612,7 +901,14 @@ final class AdminPages
         ?>
         <div class="wrap">
             <h1>Logs</h1>
-            <p>Clean internal log storage for deliveries, API calls, integrations, retries, and errors.</p>
+            <p>Review what the plugin actually attempted: outbound flow deliveries, inbound API actions, integration calls, retries, and failures.</p>
+            <?php $this->renderHelpBox('How To Read The Log Statuses', [
+                'sent or integration_sent: the request completed successfully.',
+                'failed or integration_failed: the request was attempted but did not succeed.',
+                'retry_scheduled: the plugin queued another delivery attempt.',
+                'dead_letter: retry attempts were exhausted.',
+                'integration_skipped: ERPNext sync was intentionally skipped because the payload had not changed.',
+            ]); ?>
             <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;max-width:1200px;margin-bottom:24px;">
                 <?php $this->card('Total', (string) ($stats['total'] ?? 0)); ?>
                 <?php $this->card('Sent', (string) (($stats['by_status']['sent'] ?? 0) + ($stats['by_status']['integration_sent'] ?? 0))); ?>
@@ -641,6 +937,7 @@ final class AdminPages
                 <?php wp_nonce_field('snc_clear_logs'); ?>
                 <?php submit_button('Clear Logs', 'delete', 'submit', false); ?>
             </form>
+            <p class="description">Replay is only available for entries that still have both a stored payload and an associated flow.</p>
             <table class="widefat striped">
                 <thead>
                     <tr>
@@ -686,13 +983,20 @@ final class AdminPages
         ?>
         <div class="wrap">
             <h1>Tools</h1>
-            <p>Use the REST endpoints to test payloads:</p>
+            <p>Use this page for manual testing and quick operator tasks. It is meant for validation, not day-to-day configuration.</p>
+            <?php $this->renderHelpBox('What This Page Is Good For', [
+                'Send a manual test payload through an existing flow.',
+                'Check which REST routes the plugin exposes for n8n.',
+                'Validate a webhook path after saving or changing a flow.',
+            ]); ?>
+            <p>Plugin REST endpoints:</p>
             <ul>
                 <li><code>/wp-json/sinappsus-n8n/v1/health</code></li>
                 <li><code>/wp-json/sinappsus-n8n/v1/events</code></li>
                 <li><code>/wp-json/sinappsus-n8n/v1/flows</code></li>
             </ul>
             <h2>Manual Test Send</h2>
+            <p class="description">This sends a sample payload through the selected flow using its saved trigger, payload mode, and optional preview entity ID.</p>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="snc_send_test_flow" />
                 <?php wp_nonce_field('snc_send_test_flow'); ?>
@@ -800,26 +1104,15 @@ final class AdminPages
         $flow = $this->flows->find($flowId);
 
         if ($flow) {
-            $payload = [
-                'event_id' => wp_generate_uuid4(),
-                'event_name' => 'sinappsus.manual.test',
-                'source' => 'wordpress',
-                'timestamp' => gmdate('c'),
-                'site' => [
-                    'name' => get_bloginfo('name'),
-                    'url' => home_url('/'),
-                ],
-                'entity' => [
-                    'type' => 'test',
-                    'id' => 0,
-                    'snapshot' => ['message' => 'Manual test payload'],
-                ],
-                'changes' => [],
-                'delivery' => [
-                    'attempt' => 1,
-                    'max_attempts' => 1,
-                    'queued_at' => gmdate('c'),
-                ],
+            $sampleFactory = new SamplePayloadFactory();
+            $payload = $sampleFactory->build(
+                (string) ($flow['trigger_key'] ?? 'sinappsus.manual.test'),
+                (int) ($flow['settings']['preview_entity_id'] ?? 0)
+            );
+            $payload['delivery'] = [
+                'attempt' => 1,
+                'max_attempts' => max(1, (int) ($flow['settings']['max_attempts'] ?? 1)),
+                'queued_at' => gmdate('c'),
             ];
 
             do_action('sinappsus_n8n_process_delivery', $flowId, $payload);
@@ -848,6 +1141,63 @@ final class AdminPages
             <p style="margin:0 0 8px;font-size:12px;text-transform:uppercase;color:#50575e;"><?php echo esc_html($title); ?></p>
             <p style="margin:0;font-size:28px;font-weight:600;"><?php echo esc_html($value); ?></p>
         </div>
+        <?php
+    }
+
+    private function renderHelpBox(string $title, array $items): void
+    {
+        ?>
+        <div style="background:#fff;border:1px solid #dcdcde;border-left:4px solid #2271b1;padding:16px;max-width:1100px;margin:16px 0 24px;">
+            <p style="margin:0 0 10px;font-size:14px;font-weight:600;"><?php echo esc_html($title); ?></p>
+            <ul style="margin:0 0 0 18px;list-style:disc;">
+                <?php foreach ($items as $item) : ?>
+                    <li><?php echo esc_html((string) $item); ?></li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+        <?php
+    }
+
+    private function renderApiEndpointTable(string $apiBase): void
+    {
+        $rows = [
+            ['GET', $apiBase . '/health', 'No', 'Simple health check. Useful for confirming the plugin route exists and WooCommerce status.'],
+            ['GET', $apiBase . '/entity/{type}/{id}', 'Yes', 'Read a single user, post, page, attachment, or WooCommerce order.'],
+            ['GET', $apiBase . '/search?type=user|post|order&term=...&limit=...', 'Yes', 'Search WordPress or WooCommerce records from n8n.'],
+            ['POST', $apiBase . '/action/meta', 'Yes', 'Write one meta value to a user, post, or WooCommerce order.'],
+            ['POST', $apiBase . '/action/order-note', 'Yes', 'Append an order note to a WooCommerce order.'],
+            ['GET', $apiBase . '/events', 'Admin only', 'Browse the event catalog inside wp-admin.'],
+            ['GET', $apiBase . '/flows', 'Admin only', 'Inspect the saved flow list inside wp-admin.'],
+            ['GET', $apiBase . '/logs', 'Admin only', 'Inspect plugin logs and log stats inside wp-admin.'],
+        ];
+        ?>
+        <table class="widefat striped" style="max-width:1100px;">
+            <thead>
+                <tr>
+                    <th>Method</th>
+                    <th>Path</th>
+                    <th>n8n Callback Use</th>
+                    <th>Purpose</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($rows as $row) : ?>
+                    <tr>
+                        <td><?php echo esc_html($row[0]); ?></td>
+                        <td><code><?php echo esc_html($row[1]); ?></code></td>
+                        <td><?php echo esc_html($row[2]); ?></td>
+                        <td><?php echo esc_html($row[3]); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
+    }
+
+    private function renderCodeBlock(string $content): void
+    {
+        ?>
+        <textarea readonly class="large-text code" rows="10" style="max-width:1100px;"><?php echo esc_textarea($content); ?></textarea>
         <?php
     }
 }

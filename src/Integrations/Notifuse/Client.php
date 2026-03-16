@@ -89,7 +89,7 @@ final class Client
             'last_name' => $order->get_billing_last_name(),
             'source' => $source,
             'wp_order_id' => $order->get_id(),
-        ]);
+        ], [], false, ['consent_given' => true]);
     }
 
     public function getLists(bool $forceRefresh = false): array
@@ -125,12 +125,135 @@ final class Client
             'last_name' => $user->last_name,
             'wp_user_id' => $user->ID,
             'source' => 'admin_profile',
-        ], $listIds);
+        ], $listIds, false, ['consent_given' => true]);
     }
 
-    public function subscribeEmail(string $email, array $attributes = [], array $listIds = []): array
+    public function subscribeEmail(string $email, array $attributes = [], array $listIds = [], array $options = []): array
     {
-        return $this->upsertContact(array_merge($attributes, ['email' => $email]), $listIds, true);
+        return $this->upsertContact(array_merge($attributes, ['email' => $email]), $listIds, true, $options) ?? ['success' => false, 'message' => 'Subscribe failed.'];
+    }
+
+    public function getConfiguredFormLists(): array
+    {
+        $settings = Settings::get('notifuse', []);
+        $configuredIds = isset($settings['public_form_list_ids']) && is_array($settings['public_form_list_ids'])
+            ? array_values(array_filter(array_map('sanitize_text_field', $settings['public_form_list_ids'])))
+            : [];
+        $lists = $this->getLists();
+
+        if (empty($configuredIds)) {
+            return $this->getPublicLists($lists);
+        }
+
+        return array_values(array_filter($lists, static function (array $list) use ($configuredIds): bool {
+            $listId = (string) ($list['id'] ?? $list['uuid'] ?? '');
+
+            return in_array($listId, $configuredIds, true);
+        }));
+    }
+
+    public function sendConfiguredTransactional(string $templateSettingKey, array $contact, array $data = [], array $metadata = [], string $externalId = ''): array
+    {
+        $settings = Settings::get('notifuse', []);
+        if (empty($settings['enable_transactional_emails'])) {
+            return ['success' => false, 'message' => 'Transactional email triggers are disabled.', 'code' => 0, 'body' => []];
+        }
+
+        $notificationId = sanitize_text_field((string) ($settings[$templateSettingKey] ?? ''));
+        if ($notificationId === '') {
+            return ['success' => false, 'message' => 'Transactional template is not configured.', 'code' => 0, 'body' => []];
+        }
+
+        return $this->sendTransactional($notificationId, $contact, $data, $metadata, $externalId);
+    }
+
+    public function sendTransactional(string $notificationId, array $contact, array $data = [], array $metadata = [], string $externalId = ''): array
+    {
+        $settings = Settings::get('notifuse', []);
+        $workspaceId = sanitize_text_field((string) ($settings['workspace_id'] ?? ''));
+        $email = sanitize_email((string) ($contact['email'] ?? ''));
+
+        if ($workspaceId === '' || $email === '' || $notificationId === '') {
+            return ['success' => false, 'message' => 'Notifuse workspace, notification, and contact email are required.', 'code' => 0, 'body' => []];
+        }
+
+        $payload = [
+            'workspace_id' => $workspaceId,
+            'notification' => [
+                'id' => $notificationId,
+                'channels' => ['email'],
+                'contact' => [
+                    'email' => $email,
+                    'first_name' => sanitize_text_field((string) ($contact['first_name'] ?? '')),
+                    'last_name' => sanitize_text_field((string) ($contact['last_name'] ?? '')),
+                ],
+                'data' => $data,
+                'metadata' => $metadata,
+            ],
+        ];
+
+        if ($externalId !== '') {
+            $payload['notification']['external_id'] = $externalId;
+        }
+
+        $result = $this->request('POST', '/api/transactional.send', $payload);
+        $this->logger->log([
+            'event_key' => 'notifuse.transactional.send',
+            'entity_type' => 'contact',
+            'status' => $result['success'] ? 'integration_sent' : 'integration_failed',
+            'message' => $result['message'],
+            'response_code' => $result['code'],
+            'payload' => $payload,
+        ]);
+
+        return $result;
+    }
+
+    public function trackCustomEvent(string $email, string $eventName, array $properties = [], string $goalType = '', ?float $goalValue = null, string $externalId = '', array $contact = []): array
+    {
+        $settings = Settings::get('notifuse', []);
+        if (empty($settings['enable_custom_events'])) {
+            return ['success' => false, 'message' => 'Custom event tracking is disabled.', 'code' => 0, 'body' => []];
+        }
+
+        $workspaceId = sanitize_text_field((string) ($settings['workspace_id'] ?? ''));
+        $email = sanitize_email($email);
+        $eventName = strtolower(sanitize_text_field($eventName));
+
+        if ($workspaceId === '' || $email === '' || $eventName === '') {
+            return ['success' => false, 'message' => 'Notifuse workspace, email, and event name are required.', 'code' => 0, 'body' => []];
+        }
+
+        $payload = [
+            'workspace_id' => $workspaceId,
+            'email' => $email,
+            'event_name' => $eventName,
+            'properties' => array_merge($properties, ['contact' => $contact]),
+        ];
+
+        if ($externalId !== '') {
+            $payload['external_id'] = $externalId;
+        }
+
+        if ($goalType !== '') {
+            $payload['goal_type'] = $goalType;
+        }
+
+        if ($goalValue !== null) {
+            $payload['goal_value'] = $goalValue;
+        }
+
+        $result = $this->request('POST', '/api/customEvents.upsert', $payload);
+        $this->logger->log([
+            'event_key' => 'notifuse.custom_event.upsert',
+            'entity_type' => 'contact',
+            'status' => $result['success'] ? 'integration_sent' : 'integration_failed',
+            'message' => $result['message'],
+            'response_code' => $result['code'],
+            'payload' => $payload,
+        ]);
+
+        return $result;
     }
 
     public function unsubscribeEmail(string $email): array
@@ -145,23 +268,37 @@ final class Client
         return $this->request('POST', '/api/contacts', $payload);
     }
 
-    private function upsertContact(array $contact, array $listIds = [], bool $returnResponse = false): ?array
+    private function upsertContact(array $contact, array $listIds = [], bool $returnResponse = false, array $options = []): ?array
     {
         $settings = Settings::get('notifuse', []);
         $baseUrl = untrailingslashit((string) ($settings['base_url'] ?? ''));
         $apiKey = (string) ($settings['api_key'] ?? '');
         $listId = (string) ($settings['default_list_id'] ?? '');
+        $requiresConsent = ! empty($settings['require_consent']);
+        $consentGiven = ! empty($options['consent_given']);
+        $consentText = sanitize_text_field((string) ($options['consent_text'] ?? ($settings['consent_label'] ?? '')));
 
         if ($baseUrl === '' || $apiKey === '' || empty($contact['email'])) {
             return $returnResponse ? ['success' => false, 'message' => 'Notifuse is not configured.'] : null;
         }
+
+        if ($requiresConsent && ! $consentGiven) {
+            return $returnResponse ? ['success' => false, 'message' => 'Consent is required before subscribing.'] : null;
+        }
+
+        $normalizedListIds = ! empty($listIds) ? $this->normalizeListIds($listIds) : ($listId !== '' ? [$listId] : []);
+        $contact['consent'] = [
+            'granted' => $consentGiven,
+            'text' => $consentText,
+            'captured_at' => gmdate('c'),
+        ];
 
         $payload = [
             'email' => $contact['email'],
             'external_id' => isset($contact['wp_user_id']) ? 'wp-user-' . (string) $contact['wp_user_id'] : (isset($contact['wp_order_id']) ? 'wc-order-' . (string) $contact['wp_order_id'] : ''),
             'first_name' => $contact['first_name'] ?? '',
             'last_name' => $contact['last_name'] ?? '',
-            'listIds' => ! empty($listIds) ? array_values($listIds) : ($listId !== '' ? [$listId] : []),
+            'listIds' => $normalizedListIds,
             'custom_json_1' => $contact,
         ];
 
@@ -191,6 +328,32 @@ final class Client
         $defaultList = (string) ($settings['default_list_id'] ?? '');
 
         return $defaultList !== '' ? [$defaultList] : [];
+    }
+
+    private function getPublicLists(array $lists): array
+    {
+        return array_values(array_filter($lists, static function (array $list): bool {
+            if (isset($list['is_public'])) {
+                return (bool) $list['is_public'];
+            }
+
+            if (isset($list['visibility'])) {
+                return (string) $list['visibility'] === 'public';
+            }
+
+            if (isset($list['public'])) {
+                return (bool) $list['public'];
+            }
+
+            return true;
+        }));
+    }
+
+    private function normalizeListIds(array $listIds): array
+    {
+        return array_values(array_filter(array_map(static function ($listId): string {
+            return sanitize_text_field((string) $listId);
+        }, $listIds)));
     }
 
     private function request(string $method, string $path, array $payload = []): array
