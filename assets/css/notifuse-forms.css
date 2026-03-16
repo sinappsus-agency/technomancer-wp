@@ -1,0 +1,33 @@
+.snc-notifuse-form {
+    display: grid;
+    gap: 12px;
+    max-width: 420px;
+}
+
+.snc-notifuse-form input,
+.snc-notifuse-form button {
+    width: 100%;
+    padding: 10px 12px;
+}
+
+.snc-notifuse-form button {
+    cursor: pointer;
+}
+
+.snc-notifuse-status {
+    min-height: 20px;
+    margin: 0;
+    font-size: 14px;
+}
+
+.snc-notifuse-status.is-pending {
+    color: #855f00;
+}
+
+.snc-notifuse-status.is-success {
+    color: #116329;
+}
+
+.snc-notifuse-status.is-error {
+    color: #b32d2e;
+}
