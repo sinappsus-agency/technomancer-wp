@@ -185,13 +185,35 @@ final class Client
         $customerGroup = $customerId > 0 ? (string) get_user_meta($customerId, 'snc_erp_customer_group', true) : '';
         $territory = $customerId > 0 ? (string) get_user_meta($customerId, 'snc_erp_territory', true) : '';
         $customerName = $customerId > 0 ? (string) get_user_meta($customerId, 'snc_erp_customer_name', true) : '';
+        $user = $customerId > 0 ? get_user_by('id', $customerId) : false;
 
         $source = [
             'erp_customer_name' => $customerName !== '' ? $customerName : trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()),
+            'user_login' => $user instanceof \WP_User ? (string) $user->user_login : '',
+            'display_name' => $user instanceof \WP_User ? (string) $user->display_name : '',
+            'user_email' => $user instanceof \WP_User ? (string) $user->user_email : '',
             'billing_first_name' => $order->get_billing_first_name(),
             'billing_last_name' => $order->get_billing_last_name(),
+            'billing_full_name' => trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()),
             'billing_email' => $order->get_billing_email(),
             'billing_phone' => $order->get_billing_phone(),
+            'billing_company' => $order->get_billing_company(),
+            'billing_address_1' => $order->get_billing_address_1(),
+            'billing_address_2' => $order->get_billing_address_2(),
+            'billing_city' => $order->get_billing_city(),
+            'billing_state' => $order->get_billing_state(),
+            'billing_postcode' => $order->get_billing_postcode(),
+            'billing_country' => $order->get_billing_country(),
+            'shipping_first_name' => $order->get_shipping_first_name(),
+            'shipping_last_name' => $order->get_shipping_last_name(),
+            'shipping_full_name' => trim($order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name()),
+            'shipping_company' => $order->get_shipping_company(),
+            'shipping_address_1' => $order->get_shipping_address_1(),
+            'shipping_address_2' => $order->get_shipping_address_2(),
+            'shipping_city' => $order->get_shipping_city(),
+            'shipping_state' => $order->get_shipping_state(),
+            'shipping_postcode' => $order->get_shipping_postcode(),
+            'shipping_country' => $order->get_shipping_country(),
             'erp_customer_group' => $customerGroup !== '' ? $customerGroup : (string) ($settings['customer_group'] ?? 'Commercial'),
             'erp_territory' => $territory !== '' ? $territory : (string) ($settings['territory'] ?? 'All Territories'),
             'wp_user_id' => $customerId,
@@ -207,9 +229,11 @@ final class Client
             'custom_wp_user_id' => $customerId,
         ];
 
-        $payload = array_merge($payload, $this->applyConfiguredMapping($source, is_array($settings['customer_mapping'] ?? null) ? $settings['customer_mapping'] : []));
+        $mapping = is_array($settings['customer_mapping'] ?? null) ? $settings['customer_mapping'] : [];
+        $mappedPayloads = $this->partitionCustomerMappingPayloads($source, $mapping);
+        $payload = array_merge($payload, $mappedPayloads['customer']);
 
-        $this->upsertDoc(
+        $customerResponse = $this->upsertDoc(
             'Customer',
             $payload,
             'erpnext.customer.sync',
@@ -224,7 +248,24 @@ final class Client
                 'hash_key' => 'snc_erp_customer_sync_hash',
                 'docname_key' => 'snc_erp_customer_docname',
             ] : null
-        );
+        , true);
+
+        if (empty($customerResponse['success'])) {
+            return;
+        }
+
+        $customerDocName = $this->extractDocName($customerResponse, (string) ($payload['customer_name'] ?? ''));
+        if ($customerDocName === null || $customerDocName === '') {
+            return;
+        }
+
+        if (! empty($mappedPayloads['contact']) || $source['billing_email'] !== '' || $source['billing_phone'] !== '') {
+            $this->syncCustomerContact($customerDocName, $mappedPayloads['contact'], $source, $customerId);
+        }
+
+        if ($this->hasAddressData($mappedPayloads['address'], $source)) {
+            $this->syncCustomerAddress($customerDocName, $mappedPayloads['address'], $source, $customerId);
+        }
     }
 
     public function syncOrder(int $orderId, string $context): void
@@ -280,7 +321,7 @@ final class Client
 
     public function fetchItems(int $limit = 20): array
     {
-        $fields = [
+        $desiredFields = [
             'name',
             'item_code',
             'item_name',
@@ -293,12 +334,23 @@ final class Client
             'image',
         ];
 
+        $availableFields = array_keys($this->getDocTypeFieldOptions('Item'));
+        $fields = ! empty($availableFields)
+            ? array_values(array_intersect($desiredFields, $availableFields))
+            : ['name', 'item_code', 'item_name'];
+        if (empty($fields)) {
+            $fields = ['name', 'item_code', 'item_name'];
+        }
+
         $response = $this->request(
             'GET',
             '/api/resource/Item?fields=' . rawurlencode((string) wp_json_encode($fields)) . '&limit_page_length=' . $limit
         );
         if (! $response['success']) {
-            return [];
+            $response = $this->request('GET', '/api/resource/Item?limit_page_length=' . $limit);
+            if (! $response['success']) {
+                return [];
+            }
         }
 
         $body = is_array($response['body']) ? $response['body'] : [];
@@ -364,12 +416,19 @@ final class Client
                     update_post_meta($productId, '_regular_price', $price);
                 }
 
+                $imageUrl = $this->buildErpAssetUrl((string) ($item['image'] ?? ''));
                 update_post_meta($productId, '_snc_erp_item_code', $itemCode);
                 update_post_meta($productId, '_snc_erp_item_docname', sanitize_text_field((string) ($item['name'] ?? $itemCode)));
                 update_post_meta($productId, '_snc_erp_item_group', sanitize_text_field((string) ($item['item_group'] ?? (string) ($settings['item_group'] ?? ''))));
                 update_post_meta($productId, '_snc_erp_warehouse', sanitize_text_field((string) ($item['default_warehouse'] ?? (string) ($settings['warehouse'] ?? ''))));
                 update_post_meta($productId, '_snc_erp_stock_uom', sanitize_text_field((string) ($item['stock_uom'] ?? '')));
-                update_post_meta($productId, '_snc_erp_image', esc_url_raw((string) ($item['image'] ?? '')));
+                update_post_meta($productId, '_snc_erp_image', esc_url_raw($imageUrl));
+                if ($imageUrl !== '') {
+                    $attachmentId = $this->ensureImportedProductImage($productId, $imageUrl, (string) ($item['item_name'] ?? $itemCode));
+                    if ($attachmentId > 0) {
+                        set_post_thumbnail($productId, $attachmentId);
+                    }
+                }
                 $imported++;
             }
         }
@@ -390,9 +449,30 @@ final class Client
             'erp_item_code' => (string) get_post_meta($productId, '_snc_erp_item_code', true) ?: ($product->get_sku() ?: (string) $product->get_id()),
             'name' => $product->get_name(),
             'sku' => $product->get_sku(),
+            'slug' => $product->get_slug(),
             'description' => $product->get_description(),
+            'short_description' => $product->get_short_description(),
+            'price' => $product->get_price(),
             'regular_price' => $product->get_regular_price(),
+            'sale_price' => $product->get_sale_price(),
             'stock_quantity' => $product->get_stock_quantity(),
+            'stock_status' => $product->get_stock_status(),
+            'manage_stock' => $product->get_manage_stock() ? '1' : '0',
+            'catalog_visibility' => $product->get_catalog_visibility(),
+            'status' => $product->get_status(),
+            'weight' => $product->get_weight(),
+            'length' => $product->get_length(),
+            'width' => $product->get_width(),
+            'height' => $product->get_height(),
+            'image_id' => (string) $product->get_image_id(),
+            'image_url' => $this->getAttachmentUrl($product->get_image_id()),
+            'gallery_image_ids' => implode(',', array_map('strval', $product->get_gallery_image_ids())),
+            'gallery_image_urls' => implode(',', array_filter(array_map([$this, 'getAttachmentUrl'], $product->get_gallery_image_ids()))),
+            'category_ids' => implode(',', $product->get_category_ids()),
+            'category_names' => implode(', ', $this->getTermNames($productId, 'product_cat')),
+            'tag_ids' => implode(',', $product->get_tag_ids()),
+            'tag_names' => implode(', ', $this->getTermNames($productId, 'product_tag')),
+            'permalink' => get_permalink($productId) ?: '',
             'erp_item_group' => (string) get_post_meta($productId, '_snc_erp_item_group', true) ?: (string) ($settings['item_group'] ?? ''),
             'erp_warehouse' => (string) get_post_meta($productId, '_snc_erp_warehouse', true) ?: (string) ($settings['warehouse'] ?? ''),
             'wp_product_id' => $product->get_id(),
@@ -493,9 +573,17 @@ final class Client
 
         foreach ($mapping as $sourceKey => $targetKey) {
             $source = (string) $sourceKey;
-            $target = (string) $targetKey;
+            $target = sanitize_text_field((string) $targetKey);
 
             if ($target === '' || ! array_key_exists($source, $sourceData)) {
+                continue;
+            }
+
+             if (strpos($target, '.') !== false) {
+                [, $target] = array_pad(explode('.', $target, 2), 2, '');
+            }
+
+            if ($target === '') {
                 continue;
             }
 
@@ -503,6 +591,250 @@ final class Client
         }
 
         return $payload;
+    }
+
+    private function partitionCustomerMappingPayloads(array $sourceData, array $mapping): array
+    {
+        $payloads = [
+            'customer' => [],
+            'contact' => [],
+            'address' => [],
+        ];
+
+        foreach ($mapping as $sourceKey => $targetKey) {
+            $source = (string) $sourceKey;
+            $target = sanitize_text_field((string) $targetKey);
+
+            if ($target === '' || ! array_key_exists($source, $sourceData)) {
+                continue;
+            }
+
+            $bucket = 'customer';
+            $fieldName = $target;
+            if (strpos($target, '.') !== false) {
+                [$bucket, $fieldName] = array_pad(explode('.', $target, 2), 2, '');
+            }
+
+            if (! isset($payloads[$bucket]) || $fieldName === '') {
+                $bucket = 'customer';
+                $fieldName = $target;
+            }
+
+            $payloads[$bucket][$fieldName] = $sourceData[$source];
+        }
+
+        return $payloads;
+    }
+
+    private function syncCustomerContact(string $customerDocName, array $mappedContactPayload, array $sourceData, int $customerId): void
+    {
+        $firstName = sanitize_text_field((string) ($mappedContactPayload['first_name'] ?? $sourceData['billing_first_name'] ?? ''));
+        $lastName = sanitize_text_field((string) ($mappedContactPayload['last_name'] ?? $sourceData['billing_last_name'] ?? ''));
+        $email = sanitize_email((string) ($mappedContactPayload['email_id'] ?? $sourceData['billing_email'] ?? ''));
+        $phone = sanitize_text_field((string) ($mappedContactPayload['phone'] ?? ''));
+        $mobile = sanitize_text_field((string) ($mappedContactPayload['mobile_no'] ?? $sourceData['billing_phone'] ?? ''));
+
+        unset($mappedContactPayload['email_id'], $mappedContactPayload['phone'], $mappedContactPayload['mobile_no']);
+
+        $payload = array_merge($mappedContactPayload, [
+            'doctype' => 'Contact',
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'links' => [[
+                'link_doctype' => 'Customer',
+                'link_name' => $customerDocName,
+            ]],
+        ]);
+
+        if ($email !== '') {
+            $payload['email_ids'] = [[
+                'email_id' => $email,
+                'is_primary' => 1,
+            ]];
+        }
+
+        if ($phone !== '' || $mobile !== '') {
+            $payload['phone_nos'] = [[
+                'phone' => $mobile !== '' ? $mobile : $phone,
+                'is_primary_mobile_no' => $mobile !== '' ? 1 : 0,
+                'is_primary_phone' => $phone !== '' ? 1 : 0,
+            ]];
+        }
+
+        $identity = $email !== '' ? ['name' => $email] : [];
+        $this->upsertDoc(
+            'Contact',
+            $payload,
+            'erpnext.contact.sync',
+            $identity,
+            $customerId > 0 ? [
+                'entity_type' => 'user',
+                'entity_id' => $customerId,
+                'hash_key' => 'snc_erp_contact_sync_hash',
+                'docname_key' => 'snc_erp_contact_docname',
+            ] : null
+        );
+    }
+
+    private function syncCustomerAddress(string $customerDocName, array $mappedAddressPayload, array $sourceData, int $customerId): void
+    {
+        $line1 = sanitize_text_field((string) ($mappedAddressPayload['address_line1'] ?? $sourceData['billing_address_1'] ?? ''));
+        $line2 = sanitize_text_field((string) ($mappedAddressPayload['address_line2'] ?? $sourceData['billing_address_2'] ?? ''));
+        $city = sanitize_text_field((string) ($mappedAddressPayload['city'] ?? $sourceData['billing_city'] ?? ''));
+        $state = sanitize_text_field((string) ($mappedAddressPayload['state'] ?? $sourceData['billing_state'] ?? ''));
+        $pincode = sanitize_text_field((string) ($mappedAddressPayload['pincode'] ?? $mappedAddressPayload['postal_code'] ?? $sourceData['billing_postcode'] ?? ''));
+        $country = sanitize_text_field((string) ($mappedAddressPayload['country'] ?? $sourceData['billing_country'] ?? ''));
+
+        $payload = array_merge($mappedAddressPayload, [
+            'doctype' => 'Address',
+            'address_title' => sanitize_text_field((string) ($mappedAddressPayload['address_title'] ?? $customerDocName)),
+            'address_type' => sanitize_text_field((string) ($mappedAddressPayload['address_type'] ?? 'Billing')),
+            'address_line1' => $line1,
+            'address_line2' => $line2,
+            'city' => $city,
+            'state' => $state,
+            'pincode' => $pincode,
+            'country' => $country,
+            'links' => [[
+                'link_doctype' => 'Customer',
+                'link_name' => $customerDocName,
+            ]],
+        ]);
+
+        $this->upsertDoc(
+            'Address',
+            $payload,
+            'erpnext.address.sync',
+            [],
+            $customerId > 0 ? [
+                'entity_type' => 'user',
+                'entity_id' => $customerId,
+                'hash_key' => 'snc_erp_address_sync_hash',
+                'docname_key' => 'snc_erp_address_docname',
+            ] : null
+        );
+    }
+
+    private function hasAddressData(array $mappedAddressPayload, array $sourceData): bool
+    {
+        $candidates = [
+            $mappedAddressPayload['address_line1'] ?? '',
+            $mappedAddressPayload['city'] ?? '',
+            $mappedAddressPayload['country'] ?? '',
+            $sourceData['billing_address_1'] ?? '',
+            $sourceData['billing_city'] ?? '',
+            $sourceData['billing_country'] ?? '',
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (trim((string) $candidate) !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function getAttachmentUrl($attachmentId): string
+    {
+        $attachmentId = (int) $attachmentId;
+        if ($attachmentId <= 0) {
+            return '';
+        }
+
+        $url = wp_get_attachment_url($attachmentId);
+
+        return is_string($url) ? $url : '';
+    }
+
+    private function buildErpAssetUrl(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '') {
+            return '';
+        }
+
+        if (preg_match('#^https?://#i', $path) === 1) {
+            return esc_url_raw($path);
+        }
+
+        $settings = Settings::get('erpnext', []);
+        $hostUrl = untrailingslashit((string) ($settings['host_url'] ?? ''));
+        if ($hostUrl === '') {
+            return '';
+        }
+
+        return esc_url_raw($hostUrl . '/' . ltrim($path, '/'));
+    }
+
+    private function ensureImportedProductImage(int $productId, string $imageUrl, string $title): int
+    {
+        $imageUrl = esc_url_raw($imageUrl);
+        if ($productId <= 0 || $imageUrl === '') {
+            return 0;
+        }
+
+        $existingThumbnailId = (int) get_post_thumbnail_id($productId);
+        $existingSource = (string) get_post_meta($productId, '_snc_erp_image_source', true);
+        if ($existingThumbnailId > 0 && $existingSource !== '' && hash_equals($existingSource, $imageUrl)) {
+            return $existingThumbnailId;
+        }
+
+        $existingAttachmentId = $this->findAttachmentBySourceUrl($imageUrl);
+        if ($existingAttachmentId > 0) {
+            update_post_meta($productId, '_snc_erp_image_source', $imageUrl);
+
+            return $existingAttachmentId;
+        }
+
+        if (! function_exists('media_sideload_image')) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            require_once ABSPATH . 'wp-admin/includes/media.php';
+            require_once ABSPATH . 'wp-admin/includes/image.php';
+        }
+
+        $attachmentId = media_sideload_image($imageUrl, $productId, $title, 'id');
+        if (is_wp_error($attachmentId)) {
+            return 0;
+        }
+
+        $attachmentId = (int) $attachmentId;
+        if ($attachmentId > 0) {
+            update_post_meta($attachmentId, '_snc_erp_source_url', $imageUrl);
+            update_post_meta($productId, '_snc_erp_image_source', $imageUrl);
+        }
+
+        return $attachmentId;
+    }
+
+    private function findAttachmentBySourceUrl(string $imageUrl): int
+    {
+        $attachments = get_posts([
+            'post_type' => 'attachment',
+            'post_status' => 'inherit',
+            'posts_per_page' => 1,
+            'fields' => 'ids',
+            'meta_query' => [[
+                'key' => '_snc_erp_source_url',
+                'value' => $imageUrl,
+            ]],
+        ]);
+
+        if (empty($attachments)) {
+            return 0;
+        }
+
+        return (int) $attachments[0];
+    }
+
+    private function getTermNames(int $postId, string $taxonomy): array
+    {
+        $terms = wp_get_post_terms($postId, $taxonomy, ['fields' => 'names']);
+        if (is_wp_error($terms) || ! is_array($terms)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map('strval', $terms)));
     }
 
     private function fetchStockQuantity(string $itemCode, string $warehouse): ?float
@@ -611,7 +943,15 @@ final class Client
             return $returnResponse ? $response : null;
         }
 
-        $existingName = $this->findExistingDocName($doctype, $identityFields);
+        $existingName = null;
+        if ($syncState !== null && ! empty($syncState['docname_key'])) {
+            $existingName = $this->readSyncMeta((string) ($syncState['entity_type'] ?? ''), (int) ($syncState['entity_id'] ?? 0), (string) $syncState['docname_key']);
+        }
+
+        if ($existingName === null || $existingName === '') {
+            $existingName = $this->findExistingDocName($doctype, $identityFields);
+        }
+
         $method = $existingName === null ? 'POST' : 'PUT';
         $path = '/api/resource/' . rawurlencode($doctype) . ($existingName === null ? '' : '/' . rawurlencode($existingName));
         $response = $this->request($method, $path, $payload);

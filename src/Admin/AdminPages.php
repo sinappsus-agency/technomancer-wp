@@ -135,10 +135,31 @@ final class AdminPages
     {
         return [
             'erp_customer_name' => 'ERP Customer Name',
+            'user_login' => 'WordPress Username',
+            'display_name' => 'WordPress Display Name',
+            'user_email' => 'WordPress User Email',
             'billing_first_name' => 'Billing First Name',
             'billing_last_name' => 'Billing Last Name',
+            'billing_full_name' => 'Billing Full Name',
             'billing_email' => 'Billing Email',
             'billing_phone' => 'Billing Phone',
+            'billing_company' => 'Billing Company',
+            'billing_address_1' => 'Billing Address Line 1',
+            'billing_address_2' => 'Billing Address Line 2',
+            'billing_city' => 'Billing City',
+            'billing_state' => 'Billing State',
+            'billing_postcode' => 'Billing Postcode',
+            'billing_country' => 'Billing Country',
+            'shipping_first_name' => 'Shipping First Name',
+            'shipping_last_name' => 'Shipping Last Name',
+            'shipping_full_name' => 'Shipping Full Name',
+            'shipping_company' => 'Shipping Company',
+            'shipping_address_1' => 'Shipping Address Line 1',
+            'shipping_address_2' => 'Shipping Address Line 2',
+            'shipping_city' => 'Shipping City',
+            'shipping_state' => 'Shipping State',
+            'shipping_postcode' => 'Shipping Postcode',
+            'shipping_country' => 'Shipping Country',
             'erp_customer_group' => 'ERP Customer Group',
             'erp_territory' => 'ERP Territory',
             'wp_user_id' => 'WordPress User ID',
@@ -151,13 +172,82 @@ final class AdminPages
             'erp_item_code' => 'ERP Item Code',
             'name' => 'Product Name',
             'sku' => 'SKU',
+            'slug' => 'Slug',
             'description' => 'Description',
+            'short_description' => 'Short Description',
+            'price' => 'Current Price',
             'regular_price' => 'Regular Price',
+            'sale_price' => 'Sale Price',
             'stock_quantity' => 'Stock Quantity',
+            'stock_status' => 'Stock Status',
+            'manage_stock' => 'Manage Stock',
+            'catalog_visibility' => 'Catalog Visibility',
+            'status' => 'Product Status',
+            'weight' => 'Weight',
+            'length' => 'Length',
+            'width' => 'Width',
+            'height' => 'Height',
+            'image_id' => 'Featured Image ID',
+            'image_url' => 'Featured Image URL',
+            'gallery_image_ids' => 'Gallery Image IDs',
+            'gallery_image_urls' => 'Gallery Image URLs',
+            'category_ids' => 'Category IDs',
+            'category_names' => 'Category Names',
+            'tag_ids' => 'Tag IDs',
+            'tag_names' => 'Tag Names',
+            'permalink' => 'Product URL',
             'erp_item_group' => 'ERP Item Group',
             'erp_warehouse' => 'ERP Warehouse',
             'wp_product_id' => 'WordPress Product ID',
         ];
+    }
+
+    private function prefixedDestinationOptions(array $options, string $prefix, string $labelPrefix): array
+    {
+        $prefixed = [];
+        foreach ($options as $fieldName => $label) {
+            $prefixed[$prefix . '.' . $fieldName] = $labelPrefix . ': ' . $this->humanizeDestinationLabel($fieldName, (string) $label);
+        }
+
+        return $prefixed;
+    }
+
+    private function humanizeDestinationLabel(string $fieldName, string $label): string
+    {
+        $overrides = [
+            'email_id' => 'Email (' . $fieldName . ')',
+            'mobile_no' => 'Mobile (' . $fieldName . ')',
+            'phone' => 'Phone (' . $fieldName . ')',
+            'image' => 'Product Image (' . $fieldName . ' · Attach Image)',
+            'address_line1' => 'Address Line 1 (' . $fieldName . ')',
+            'address_line2' => 'Address Line 2 (' . $fieldName . ')',
+        ];
+
+        if (isset($overrides[$fieldName])) {
+            return $overrides[$fieldName];
+        }
+
+        return $label;
+    }
+
+    private function erpCustomerDestinationOptions(): array
+    {
+        $customerOptions = $this->prefixedDestinationOptions($this->erpnextClient->getDocTypeFieldOptions('Customer'), 'customer', 'Customer');
+        $contactOptions = $this->prefixedDestinationOptions($this->erpnextClient->getDocTypeFieldOptions('Contact'), 'contact', 'Contact');
+        $addressOptions = $this->prefixedDestinationOptions($this->erpnextClient->getDocTypeFieldOptions('Address'), 'address', 'Address');
+
+        $syntheticOptions = [
+            'contact.email_id' => 'Contact: Primary Email (email_id)',
+            'contact.phone' => 'Contact: Primary Phone (phone)',
+            'contact.mobile_no' => 'Contact: Primary Mobile (mobile_no)',
+        ];
+
+        return $customerOptions + $contactOptions + $syntheticOptions + $addressOptions;
+    }
+
+    private function erpProductDestinationOptions(): array
+    {
+        return $this->prefixedDestinationOptions($this->erpnextClient->getDocTypeFieldOptions('Item'), 'item', 'Item');
     }
 
     private function renderMappingTable(string $prefix, array $sourceFields, array $savedMapping, string $description, array $destinationOptions = []): void
@@ -832,8 +922,8 @@ final class AdminPages
         $priceListOptions = $this->erpnextClient->getReferenceOptions('Price List');
         $customerGroupOptions = $this->erpnextClient->getReferenceOptions('Customer Group');
         $territoryOptions = $this->erpnextClient->getReferenceOptions('Territory');
-        $customerFieldOptions = $this->erpnextClient->getDocTypeFieldOptions('Customer');
-        $productFieldOptions = $this->erpnextClient->getDocTypeFieldOptions('Item');
+        $customerFieldOptions = $this->erpCustomerDestinationOptions();
+        $productFieldOptions = $this->erpProductDestinationOptions();
         ?>
         <div class="wrap">
             <h1>ERPNext</h1>
@@ -945,7 +1035,7 @@ final class AdminPages
                     </tr>
                 </table>
                 <h2>Customer Field Mapping</h2>
-                <?php $this->renderMappingTable('customer_mapping', $this->erpCustomerSourceFields(), is_array($erpnext['customer_mapping'] ?? null) ? $erpnext['customer_mapping'] : [], 'Map WordPress or WooCommerce customer fields into ERPNext customer fields.', $customerFieldOptions); ?>
+                <?php $this->renderMappingTable('customer_mapping', $this->erpCustomerSourceFields(), is_array($erpnext['customer_mapping'] ?? null) ? $erpnext['customer_mapping'] : [], 'Map WordPress or WooCommerce customer fields into ERPNext Customer, Contact, or Address fields.', $customerFieldOptions); ?>
                 <h2>Product Field Mapping</h2>
                 <?php $this->renderMappingTable('product_mapping', $this->erpProductSourceFields(), is_array($erpnext['product_mapping'] ?? null) ? $erpnext['product_mapping'] : [], 'Map WooCommerce product fields into ERPNext item fields.', $productFieldOptions); ?>
                 <?php submit_button('Save ERPNext Settings'); ?>
