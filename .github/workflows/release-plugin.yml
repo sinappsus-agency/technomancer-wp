@@ -1,0 +1,52 @@
+name: Build And Release Plugin
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Ensure build script is executable
+        run: chmod +x scripts/build-release.sh
+
+      - name: Build plugin ZIP
+        id: build
+        shell: bash
+        run: |
+          BUILD_OUTPUT="$(scripts/build-release.sh)"
+          echo "${BUILD_OUTPUT}"
+          VERSION="$(echo "${BUILD_OUTPUT}" | awk -F'=' '/^version=/{print $2; exit}')"
+          ZIP_PATH="$(echo "${BUILD_OUTPUT}" | awk -F'=' '/^zip_path=/{print $2; exit}')"
+
+          if [ -z "${VERSION}" ] || [ -z "${ZIP_PATH}" ]; then
+            echo "Failed to extract version or zip path from build output." >&2
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "zip_path=${ZIP_PATH}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.build.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: SINAPPSUS n8n Connector v${{ steps.build.outputs.version }}
+          generate_release_notes: true
+          make_latest: true
+          files: ${{ steps.build.outputs.zip_path }}

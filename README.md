@@ -193,3 +193,32 @@ When the checker instance is ready, this action fires:
 `snc_update_checker_ready`
 
 You can use it to apply additional plugin-update-checker options.
+
+## Automated Release And ZIP Pipeline
+
+This repository includes an automated release workflow at:
+
+- `.github/workflows/release-plugin.yml`
+
+Behavior:
+
+1. Triggers on push to `main` (and manual workflow dispatch).
+2. Checks out submodules so `plugin-update-checker` is included.
+3. Builds `dist/sinappsus-n8n-connector-{version}.zip` from plugin files.
+4. Creates or updates GitHub release tag `v{version}`.
+5. Uploads the built ZIP as the release asset used by updates.
+
+Build script used by the workflow:
+
+- `scripts/build-release.sh`
+
+Release checklist for each update:
+
+1. Bump `Version` in `sinappsus-n8n-connector.php`.
+2. Commit and push to `main`.
+3. Wait for workflow completion.
+4. Confirm release `v{version}` exists with ZIP asset attached.
+
+Important:
+
+- If you push to `main` without changing `Version`, the release tag stays the same and installed sites will not see a newer version.
