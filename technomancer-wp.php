@@ -3,7 +3,7 @@
  * Plugin Name: Technomancer WP
  * Plugin URI: https://github.com/sinappsus-agency/technomancer-wp
  * Description: Multi-flow WordPress and WooCommerce automation plugin for n8n, Notifuse, and ERPNext.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Requires at least: 6.0
  * Requires PHP: 8.0
  * Author: SINAPPSUS
@@ -17,7 +17,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('TECHNOMANCER_WP_VERSION', '0.1.0');
+define('TECHNOMANCER_WP_VERSION', '0.1.1');
 define('TECHNOMANCER_WP_FILE', __FILE__);
 define('TECHNOMANCER_WP_PATH', plugin_dir_path(__FILE__));
 define('TECHNOMANCER_WP_URL', plugin_dir_url(__FILE__));

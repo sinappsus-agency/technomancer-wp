@@ -21,6 +21,7 @@ final class WooCommerceIntegration
         add_action('woocommerce_before_single_product_summary', [$this, 'overrideSingle'], 5);
         add_action('woocommerce_before_shop_loop_item_title', [$this, 'overrideLoop'], 5);
 
+        add_action('admin_enqueue_scripts', [$this, 'adminAssets']);
         add_action('wp_enqueue_scripts', [$this, 'assets']);
     }
 
@@ -37,16 +38,26 @@ final class WooCommerceIntegration
             'label' => 'Featured Video (MP4)',
             'placeholder' => 'https://...',
             'desc_tip' => true,
-            'description' => 'Public URL to the featured MP4 video.',
+            'description' => 'Paste a direct MP4 URL, or use Select/Upload to choose from Media Library.',
         ]);
+        echo '<p class="form-field _fv_video_mp4_field">';
+        echo '<button type="button" class="button tmwp-video-select" data-target="_fv_video_mp4" data-mime="video/mp4">Select or Upload MP4</button> ';
+        echo '<button type="button" class="button tmwp-video-clear" data-target="_fv_video_mp4">Clear</button>';
+        echo '<span class="tmwp-video-feedback" data-target="_fv_video_mp4" style="margin-left:8px;"></span>';
+        echo '</p>';
 
         woocommerce_wp_text_input([
             'id' => '_fv_video_webm',
             'label' => 'WebM (optional)',
             'placeholder' => 'https://...',
             'desc_tip' => true,
-            'description' => 'Optional WebM source for improved browser support.',
+            'description' => 'Optional WebM URL, or choose a WebM file from Media Library.',
         ]);
+        echo '<p class="form-field _fv_video_webm_field">';
+        echo '<button type="button" class="button tmwp-video-select" data-target="_fv_video_webm" data-mime="video/webm">Select or Upload WebM</button> ';
+        echo '<button type="button" class="button tmwp-video-clear" data-target="_fv_video_webm">Clear</button>';
+        echo '<span class="tmwp-video-feedback" data-target="_fv_video_webm" style="margin-left:8px;"></span>';
+        echo '</p>';
 
         woocommerce_wp_select([
             'id' => '_fv_mode',
@@ -58,6 +69,97 @@ final class WooCommerceIntegration
         ]);
 
         echo '</div>';
+    }
+
+    public function adminAssets(string $hook): void
+    {
+        if (! in_array($hook, ['post.php', 'post-new.php'], true)) {
+            return;
+        }
+
+        $screen = get_current_screen();
+        if (! $screen || $screen->post_type !== 'product') {
+            return;
+        }
+
+        wp_enqueue_media();
+        wp_register_script('tmwp-featured-video-admin', '', ['jquery'], TECHNOMANCER_WP_VERSION, true);
+        wp_enqueue_script('tmwp-featured-video-admin');
+        wp_add_inline_script('tmwp-featured-video-admin', "
+            (function($) {
+                function setFeedback(targetId, message, kind) {
+                    var el = $('.tmwp-video-feedback').filter(function() {
+                        return $(this).data('target') === targetId;
+                    });
+                    if (!el.length) {
+                        return;
+                    }
+
+                    var color = '#2271b1';
+                    if (kind === 'error') {
+                        color = '#b32d2e';
+                    }
+                    if (kind === 'success') {
+                        color = '#008a20';
+                    }
+
+                    el.text(message || '').css('color', color);
+                }
+
+                function selectVideo(targetId, mimeType) {
+                    var frame = wp.media({
+                        title: 'Select Video',
+                        button: { text: 'Use this video' },
+                        multiple: false,
+                        library: { type: 'video' }
+                    });
+
+                    frame.on('select', function() {
+                        var attachment = frame.state().get('selection').first().toJSON();
+                        if (!attachment || !attachment.url) {
+                            return;
+                        }
+
+                        if (mimeType && attachment.mime && attachment.mime !== mimeType) {
+                            if (mimeType === 'video/webm' && attachment.mime.indexOf('video/webm') !== 0) {
+                                setFeedback(targetId, 'Selected file is not WebM. Please choose a WebM video.', 'error');
+                                return;
+                            }
+                            if (mimeType === 'video/mp4' && attachment.mime.indexOf('video/mp4') !== 0) {
+                                setFeedback(targetId, 'Selected file is not MP4. Please choose an MP4 video.', 'error');
+                                return;
+                            }
+                        }
+
+                        $('#' + targetId).val(attachment.url).trigger('change');
+                        setFeedback(targetId, 'Video selected from Media Library.', 'success');
+                    });
+
+                    frame.open();
+                }
+
+                $(document).on('click', '.tmwp-video-select', function(e) {
+                    e.preventDefault();
+                    var targetId = $(this).data('target');
+                    var mimeType = $(this).data('mime') || '';
+                    if (!targetId) {
+                        return;
+                    }
+                    setFeedback(targetId, '', 'info');
+                    selectVideo(targetId, mimeType);
+                });
+
+                $(document).on('click', '.tmwp-video-clear', function(e) {
+                    e.preventDefault();
+                    var targetId = $(this).data('target');
+                    if (!targetId) {
+                        return;
+                    }
+                    $('#' + targetId).val('').trigger('change');
+                    setFeedback(targetId, 'Video cleared.', 'info');
+                });
+            })(jQuery);
+        ");
     }
 
     public function saveFields($product): void
