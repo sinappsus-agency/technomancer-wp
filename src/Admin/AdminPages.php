@@ -58,19 +58,31 @@ final class AdminPages
 
     public function sanitizeSettings(array $settings): array
     {
-        $trustedOrigins = isset($settings['trusted_origins']) ? explode(PHP_EOL, (string) $settings['trusted_origins']) : [];
-        $trustedOrigins = array_values(array_filter(array_map('trim', $trustedOrigins)));
-        $customerMapping = $this->sanitizeMappingSetting($settings['erpnext']['customer_mapping'] ?? []);
-        $productMapping = $this->sanitizeMappingSetting($settings['erpnext']['product_mapping'] ?? []);
-        $notifusePublicLists = isset($settings['notifuse']['public_form_list_ids']) && is_array($settings['notifuse']['public_form_list_ids'])
-            ? array_values(array_filter(array_map('sanitize_text_field', $settings['notifuse']['public_form_list_ids'])))
-            : [];
+        // Load the existing saved settings so that saving from one sub-page
+        // does not blank out sections owned by another sub-page.
+        $existing = get_option('snc_settings', []);
+        $result = is_array($existing) ? $existing : [];
 
-        return [
-            'api_token' => sanitize_text_field((string) ($settings['api_token'] ?? '')),
-            'signing_secret' => sanitize_text_field((string) ($settings['signing_secret'] ?? '')),
-            'trusted_origins' => $trustedOrigins,
-            'notifuse' => [
+        $isApiForm = array_key_exists('api_token', $settings)
+            || array_key_exists('signing_secret', $settings)
+            || array_key_exists('trusted_origins', $settings);
+
+        $isNotifuseForm = isset($settings['notifuse']) && is_array($settings['notifuse']);
+        $isErpnextForm = isset($settings['erpnext']) && is_array($settings['erpnext']);
+
+        if ($isApiForm) {
+            $trustedOrigins = isset($settings['trusted_origins']) ? explode(PHP_EOL, (string) $settings['trusted_origins']) : [];
+            $trustedOrigins = array_values(array_filter(array_map('trim', $trustedOrigins)));
+            $result['api_token'] = sanitize_text_field((string) ($settings['api_token'] ?? ''));
+            $result['signing_secret'] = sanitize_text_field((string) ($settings['signing_secret'] ?? ''));
+            $result['trusted_origins'] = $trustedOrigins;
+        }
+
+        if ($isNotifuseForm) {
+            $notifusePublicLists = isset($settings['notifuse']['public_form_list_ids']) && is_array($settings['notifuse']['public_form_list_ids'])
+                ? array_values(array_filter(array_map('sanitize_text_field', $settings['notifuse']['public_form_list_ids'])))
+                : [];
+            $result['notifuse'] = [
                 'base_url' => esc_url_raw((string) ($settings['notifuse']['base_url'] ?? '')),
                 'api_key' => sanitize_text_field((string) ($settings['notifuse']['api_key'] ?? '')),
                 'workspace_id' => strtolower(sanitize_text_field((string) ($settings['notifuse']['workspace_id'] ?? ''))),
@@ -87,8 +99,13 @@ final class AdminPages
                 'order_confirmation_template_id' => sanitize_text_field((string) ($settings['notifuse']['order_confirmation_template_id'] ?? '')),
                 'order_paid_template_id' => sanitize_text_field((string) ($settings['notifuse']['order_paid_template_id'] ?? '')),
                 'refund_template_id' => sanitize_text_field((string) ($settings['notifuse']['refund_template_id'] ?? '')),
-            ],
-            'erpnext' => [
+            ];
+        }
+
+        if ($isErpnextForm) {
+            $customerMapping = $this->sanitizeMappingSetting($settings['erpnext']['customer_mapping'] ?? []);
+            $productMapping = $this->sanitizeMappingSetting($settings['erpnext']['product_mapping'] ?? []);
+            $result['erpnext'] = [
                 'host_url' => esc_url_raw((string) ($settings['erpnext']['host_url'] ?? '')),
                 'api_key' => sanitize_text_field((string) ($settings['erpnext']['api_key'] ?? '')),
                 'api_secret' => sanitize_text_field((string) ($settings['erpnext']['api_secret'] ?? '')),
@@ -106,8 +123,10 @@ final class AdminPages
                 'sync_interval' => sanitize_text_field((string) ($settings['erpnext']['sync_interval'] ?? 'hourly')),
                 'customer_mapping' => $customerMapping,
                 'product_mapping' => $productMapping,
-            ],
-        ];
+            ];
+        }
+
+        return $result;
     }
 
     private function sanitizeMappingSetting($value): array

@@ -33,7 +33,7 @@ final class EventManager
     public function register(): void
     {
         add_action('user_register', [$this, 'onUserCreated']);
-        add_action('profile_update', [$this, 'onUserUpdated'], 10, 1);
+        add_action('profile_update', [$this, 'onUserUpdated'], 10, 3);
         add_action('delete_user', [$this, 'onUserDeleted'], 10, 1);
         add_action('set_user_role', [$this, 'onUserRoleChanged'], 10, 3);
         add_action('wp_login', [$this, 'onUserLogin'], 10, 2);
@@ -45,7 +45,7 @@ final class EventManager
         add_action('transition_comment_status', [$this, 'onCommentStatusChanged'], 10, 3);
         add_action('wp_after_insert_post', [$this, 'onPostInserted'], 10, 3);
         add_action('publish_post', [$this, 'onPostPublished'], 10, 1);
-        add_action('post_updated', [$this, 'onPostUpdated'], 10, 1);
+        add_action('post_updated', [$this, 'onPostUpdated'], 10, 3);
         add_action('before_delete_post', [$this, 'onPostDeleted'], 10, 1);
         add_action('trashed_post', [$this, 'onPostTrashed'], 10, 1);
         add_action('untrashed_post', [$this, 'onPostRestored'], 10, 1);
@@ -100,13 +100,19 @@ final class EventManager
         );
     }
 
-    public function onUserUpdated(int $userId): void
+    public function onUserUpdated(int $userId, ?\WP_User $oldUser = null, ?array $userdata = null): void
     {
+        $snapshot = $this->payloadBuilder->userSnapshot($userId);
+        $changes  = $oldUser instanceof \WP_User
+            ? $this->payloadBuilder->userChanges($oldUser, $snapshot)
+            : [];
+
         $payload = $this->payloadBuilder->build(
             'wordpress.user.updated',
             'user',
             $userId,
-            $this->payloadBuilder->userSnapshot($userId)
+            $snapshot,
+            $changes
         );
 
         $this->emit('wordpress.user.updated', $payload);
@@ -257,17 +263,27 @@ final class EventManager
         $this->emit('wordpress.post.published', $payload);
     }
 
-    public function onPostUpdated(int $postId): void
+    public function onPostUpdated(int $postId, ?\WP_Post $postAfter = null, ?\WP_Post $postBefore = null): void
     {
         if (wp_is_post_revision($postId)) {
             return;
+        }
+
+        $changes = [];
+        if ($postBefore instanceof \WP_Post && $postAfter instanceof \WP_Post) {
+            foreach (['post_title', 'post_status', 'post_content', 'post_excerpt', 'post_name'] as $field) {
+                if ($postBefore->$field !== $postAfter->$field) {
+                    $changes[$field] = ['from' => $postBefore->$field, 'to' => $postAfter->$field];
+                }
+            }
         }
 
         $payload = $this->payloadBuilder->build(
             'wordpress.post.updated',
             'post',
             $postId,
-            $this->payloadBuilder->postSnapshot($postId)
+            $this->payloadBuilder->postSnapshot($postId),
+            $changes
         );
 
         $this->emit('wordpress.post.updated', $payload);
@@ -516,7 +532,7 @@ final class EventManager
             'woocommerce.product.created',
             'product',
             $productId,
-            $this->payloadBuilder->postSnapshot($productId)
+            $this->payloadBuilder->productSnapshot($productId)
         );
 
         $this->emit('woocommerce.product.created', $payload);
@@ -528,7 +544,7 @@ final class EventManager
             'woocommerce.product.updated',
             'product',
             $productId,
-            $this->payloadBuilder->postSnapshot($productId)
+            $this->payloadBuilder->productSnapshot($productId)
         );
 
         $this->emit('woocommerce.product.updated', $payload);

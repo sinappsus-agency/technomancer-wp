@@ -20,6 +20,7 @@ use Sinappsus\N8nConnector\Integrations\Notifuse\Client as NotifuseClient;
 use Sinappsus\N8nConnector\Integrations\Notifuse\ProfileManager as NotifuseProfileManager;
 use Sinappsus\N8nConnector\Security\RequestAuthorizer;
 
+
 final class Plugin
 {
     private static ?self $instance = null;
@@ -54,6 +55,8 @@ final class Plugin
 
     private WidgetRegistrar $widgetRegistrar;
 
+    private ?object $wooCommerceIntegration = null;
+
     public static function boot(): void
     {
         if (self::$instance instanceof self) {
@@ -81,6 +84,10 @@ final class Plugin
         $this->events = new EventManager($this->flows, $this->dispatcher, $this->notifuseClient, $this->erpnextClient);
         $this->adminPages = new AdminPages($this->flows, $this->logger, $this->notifuseClient, $this->erpnextClient);
         $this->restController = new RestController($this->flows, $this->logger, $this->authorizer);
+        $wooCommerceIntegrationClass = '\\Sinappsus\\N8nConnector\\Integrations\\WooCommerce\\WooCommerceIntegration';
+        if (class_exists($wooCommerceIntegrationClass)) {
+            $this->wooCommerceIntegration = new $wooCommerceIntegrationClass();
+        }
     }
 
     private function register(): void
@@ -110,6 +117,9 @@ final class Plugin
         $this->productFieldsManager->register();
         $this->syncScheduler->register();
         $this->widgetRegistrar->register();
+        if ($this->wooCommerceIntegration !== null && method_exists($this->wooCommerceIntegration, 'register')) {
+            $this->wooCommerceIntegration->register();
+        }
         $this->events->register();
     }
 }

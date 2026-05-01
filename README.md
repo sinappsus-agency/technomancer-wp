@@ -107,3 +107,89 @@ Example request bodies:
 ## Notes
 
 WooCommerce-specific features activate only when WooCommerce is active.
+
+## Automated Plugin Updates
+
+This plugin now supports automated update checks through plugin-update-checker.
+
+### 1) Install the library in the plugin
+
+Place the library in one of these paths:
+
+- `vendor/plugin-update-checker/plugin-update-checker.php`
+- `lib/plugin-update-checker/plugin-update-checker.php`
+
+Example command (inside this plugin directory):
+
+`git submodule add https://github.com/YahnisElsts/plugin-update-checker.git lib/plugin-update-checker`
+
+### 2) Configure update source
+
+By default, the update source is:
+
+`https://github.com/sinappsus-agency/technomancer-wp/`
+
+You can override source, branch, slug, and token via filters:
+
+```php
+add_filter('snc_update_metadata_url', static function () {
+  // Optional: provide a metadata JSON endpoint instead of a GitHub repo URL.
+  return '';
+});
+
+add_filter('snc_update_source', static function () {
+  return 'https://github.com/your-org/your-private-plugin-repo/';
+});
+
+add_filter('snc_update_branch', static function () {
+  return 'main';
+});
+
+add_filter('snc_update_slug', static function () {
+  return 'sinappsus-n8n-connector';
+});
+
+add_filter('snc_update_token', static function () {
+  return 'ghp_xxxxx';
+});
+```
+
+### 3) Where version and ZIP URL come from
+
+The installed version comes from the plugin header in `sinappsus-n8n-connector.php`:
+
+- `Version: 0.1.0`
+
+The remote version and package URL come from one of these sources:
+
+- GitHub mode (default): tags or releases from `snc_update_source`
+- Manifest mode: JSON endpoint from `snc_update_metadata_url`
+
+In GitHub mode:
+
+- Bump the plugin header `Version` in your plugin.
+- Create a matching Git tag/release in the update repo.
+- For private repos, return a token via `snc_update_token`.
+- ZIP download is taken from the GitHub release asset (when available) or repository archive.
+
+In Manifest mode, your endpoint must return JSON with at least:
+
+```json
+{
+  "name": "SINAPPSUS n8n Connector",
+  "slug": "sinappsus-n8n-connector",
+  "version": "0.1.1",
+  "download_url": "https://updates.example.com/sinappsus-n8n-connector-0.1.1.zip",
+  "requires": "6.0",
+  "tested": "6.8",
+  "requires_php": "8.0"
+}
+```
+
+### 4) Optional advanced customization
+
+When the checker instance is ready, this action fires:
+
+`snc_update_checker_ready`
+
+You can use it to apply additional plugin-update-checker options.
