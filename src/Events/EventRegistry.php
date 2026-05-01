@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Events;
+namespace TechnomancerWp\Connector\Events;
 
 final class EventRegistry
 {

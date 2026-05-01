@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Integrations\Notifuse\Elementor;
+namespace TechnomancerWp\Connector\Integrations\Notifuse\Elementor;
 
 final class WidgetRegistrar
 {

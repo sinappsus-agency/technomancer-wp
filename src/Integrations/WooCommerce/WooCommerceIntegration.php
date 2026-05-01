@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Integrations\WooCommerce;
+namespace TechnomancerWp\Connector\Integrations\WooCommerce;
 
 final class WooCommerceIntegration
 {
@@ -192,7 +192,7 @@ final class WooCommerceIntegration
             return;
         }
 
-        wp_register_style('snc-featured-video-inline', false, [], SINAPPSUS_N8N_CONNECTOR_VERSION);
+        wp_register_style('snc-featured-video-inline', false, [], TECHNOMANCER_WP_VERSION);
         wp_enqueue_style('snc-featured-video-inline');
         wp_add_inline_style('snc-featured-video-inline', '
             .fv-media { position: relative; overflow: hidden; }
@@ -201,7 +201,7 @@ final class WooCommerceIntegration
             .fv-video { position: absolute; top: 0; left: 0; opacity: 0; transition: opacity .35s ease; }
         ');
 
-        wp_register_script('snc-featured-video-inline', '', [], SINAPPSUS_N8N_CONNECTOR_VERSION, true);
+        wp_register_script('snc-featured-video-inline', '', [], TECHNOMANCER_WP_VERSION, true);
         wp_enqueue_script('snc-featured-video-inline');
 
         $disableMobile = get_option('fv_disable_mobile_autoplay') ? 'true' : 'false';
@@ -268,3 +268,4 @@ final class WooCommerceIntegration
         ");
     }
 }
+

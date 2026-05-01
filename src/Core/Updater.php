@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Core;
+namespace TechnomancerWp\Connector\Core;
 
 final class Updater
 {
@@ -23,10 +23,10 @@ final class Updater
             return;
         }
 
-        $metadataUrl = trim((string) apply_filters('snc_update_metadata_url', ''));
+        $metadataUrl = trim((string) apply_filters('tmwp_update_metadata_url', ''));
 
         $source = (string) apply_filters(
-            'snc_update_source',
+            'tmwp_update_source',
             'https://github.com/sinappsus-agency/technomancer-wp/'
         );
         $source = trim($source);
@@ -37,13 +37,13 @@ final class Updater
             return;
         }
 
-        $slug = (string) apply_filters('snc_update_slug', 'technomancer-wp');
-        $branch = (string) apply_filters('snc_update_branch', 'main');
-        $token = trim((string) apply_filters('snc_update_token', ''));
+        $slug = (string) apply_filters('tmwp_update_slug', 'technomancer-wp');
+        $branch = (string) apply_filters('tmwp_update_branch', 'main');
+        $token = trim((string) apply_filters('tmwp_update_token', ''));
 
         self::$checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
             $updateEndpoint,
-            SINAPPSUS_N8N_CONNECTOR_FILE,
+            TECHNOMANCER_WP_FILE,
             $slug
         );
 
@@ -68,7 +68,7 @@ final class Updater
             }
         }
 
-        do_action('snc_update_checker_ready', self::$checker);
+        do_action('tmwp_update_checker_ready', self::$checker);
     }
 
     private static function loadLibrary(): bool
@@ -78,8 +78,8 @@ final class Updater
         }
 
         $paths = [
-            SINAPPSUS_N8N_CONNECTOR_PATH . 'vendor/plugin-update-checker/plugin-update-checker.php',
-            SINAPPSUS_N8N_CONNECTOR_PATH . 'lib/plugin-update-checker/plugin-update-checker.php',
+            TECHNOMANCER_WP_PATH . 'vendor/plugin-update-checker/plugin-update-checker.php',
+            TECHNOMANCER_WP_PATH . 'lib/plugin-update-checker/plugin-update-checker.php',
         ];
 
         foreach ($paths as $path) {
@@ -95,3 +95,4 @@ final class Updater
         return false;
     }
 }
+

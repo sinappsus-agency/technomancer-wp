@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Flows;
+namespace TechnomancerWp\Connector\Flows;
 
 final class FlowRepository
 {
@@ -10,7 +10,7 @@ final class FlowRepository
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'snc_flows';
+        $table = $wpdb->prefix . 'tmwp_flows';
         $results = $wpdb->get_results("SELECT * FROM {$table} ORDER BY updated_at DESC", ARRAY_A);
 
         return array_map([$this, 'mapFlow'], is_array($results) ? $results : []);
@@ -20,7 +20,7 @@ final class FlowRepository
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'snc_flows';
+        $table = $wpdb->prefix . 'tmwp_flows';
         $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE id = %d", $id), ARRAY_A);
 
         return is_array($row) ? $this->mapFlow($row) : null;
@@ -30,7 +30,7 @@ final class FlowRepository
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'snc_flows';
+        $table = $wpdb->prefix . 'tmwp_flows';
         $results = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT * FROM {$table} WHERE trigger_key = %s AND is_enabled = 1 ORDER BY updated_at DESC",
@@ -46,7 +46,7 @@ final class FlowRepository
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'snc_flows';
+        $table = $wpdb->prefix . 'tmwp_flows';
         $now = current_time('mysql');
         $payload = [
             'name' => sanitize_text_field($data['name'] ?? ''),
@@ -78,7 +78,7 @@ final class FlowRepository
     {
         global $wpdb;
 
-        $table = $wpdb->prefix . 'snc_flows';
+        $table = $wpdb->prefix . 'tmwp_flows';
         $wpdb->delete($table, ['id' => $id]);
     }
 

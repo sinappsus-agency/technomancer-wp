@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Integrations\Notifuse;
+namespace TechnomancerWp\Connector\Integrations\Notifuse;
 
-use Sinappsus\N8nConnector\Flows\Logger;
+use TechnomancerWp\Connector\Flows\Logger;
 
 final class ProfileManager
 {
@@ -26,29 +26,29 @@ final class ProfileManager
         add_action('personal_options_update', [$this, 'saveUserLists']);
         add_action('edit_user_profile_update', [$this, 'saveUserLists']);
 
-        add_shortcode('snc_notifuse_subscribe', [$this, 'renderSubscribeForm']);
-        add_shortcode('snc_notifuse_unsubscribe', [$this, 'renderUnsubscribeForm']);
+        add_shortcode('tmwp_notifuse_subscribe', [$this, 'renderSubscribeForm']);
+        add_shortcode('tmwp_notifuse_unsubscribe', [$this, 'renderUnsubscribeForm']);
 
-        add_action('wp_ajax_snc_notifuse_subscribe', [$this, 'handleSubscribe']);
-        add_action('wp_ajax_nopriv_snc_notifuse_subscribe', [$this, 'handleSubscribe']);
-        add_action('wp_ajax_snc_notifuse_unsubscribe', [$this, 'handleUnsubscribe']);
-        add_action('wp_ajax_nopriv_snc_notifuse_unsubscribe', [$this, 'handleUnsubscribe']);
+        add_action('wp_ajax_tmwp_notifuse_subscribe', [$this, 'handleSubscribe']);
+        add_action('wp_ajax_nopriv_tmwp_notifuse_subscribe', [$this, 'handleSubscribe']);
+        add_action('wp_ajax_tmwp_notifuse_unsubscribe', [$this, 'handleUnsubscribe']);
+        add_action('wp_ajax_nopriv_tmwp_notifuse_unsubscribe', [$this, 'handleUnsubscribe']);
     }
 
     public function enqueueAssets(): void
     {
         wp_register_script(
             'snc-notifuse-forms',
-            SINAPPSUS_N8N_CONNECTOR_URL . 'assets/js/notifuse-forms.js',
+            TECHNOMANCER_WP_URL . 'assets/js/notifuse-forms.js',
             [],
-            SINAPPSUS_N8N_CONNECTOR_VERSION,
+            TECHNOMANCER_WP_VERSION,
             true
         );
         wp_register_style(
             'snc-notifuse-forms',
-            SINAPPSUS_N8N_CONNECTOR_URL . 'assets/css/notifuse-forms.css',
+            TECHNOMANCER_WP_URL . 'assets/css/notifuse-forms.css',
             [],
-            SINAPPSUS_N8N_CONNECTOR_VERSION
+            TECHNOMANCER_WP_VERSION
         );
 
         wp_enqueue_script('snc-notifuse-forms');
@@ -62,16 +62,16 @@ final class ProfileManager
         }
 
         $lists = $this->client->getLists();
-        $selected = get_user_meta($user->ID, 'snc_notifuse_list_ids', true);
+        $selected = get_user_meta($user->ID, 'tmwp_notifuse_list_ids', true);
         $selected = is_array($selected) ? $selected : [];
         ?>
         <h2>Notifuse Lists</h2>
         <p class="description">Assign this WordPress user to existing lists from your connected Notifuse workspace. Saving this form updates the remote contact membership; it does not create a new list.</p>
         <table class="form-table">
             <tr>
-                <th><label for="snc_notifuse_list_ids">Assigned Existing Remote Lists</label></th>
+                <th><label for="tmwp_notifuse_list_ids">Assigned Existing Remote Lists</label></th>
                 <td>
-                    <select id="snc_notifuse_list_ids" name="snc_notifuse_list_ids[]" multiple size="6" style="min-width:320px;">
+                    <select id="tmwp_notifuse_list_ids" name="tmwp_notifuse_list_ids[]" multiple size="6" style="min-width:320px;">
                         <?php foreach ($lists as $list) : ?>
                             <?php $listId = (string) ($list['id'] ?? $list['uuid'] ?? ''); ?>
                             <?php $label = (string) ($list['name'] ?? $listId); ?>
@@ -91,7 +91,7 @@ final class ProfileManager
             return;
         }
 
-        $listIds = isset($_POST['snc_notifuse_list_ids']) && is_array($_POST['snc_notifuse_list_ids']) ? $_POST['snc_notifuse_list_ids'] : [];
+        $listIds = isset($_POST['tmwp_notifuse_list_ids']) && is_array($_POST['tmwp_notifuse_list_ids']) ? $_POST['tmwp_notifuse_list_ids'] : [];
         $this->client->updateUserLists($userId, $listIds);
     }
 
@@ -216,7 +216,7 @@ final class ProfileManager
     {
         $nonce = isset($_POST['nonce']) ? sanitize_text_field((string) $_POST['nonce']) : '';
 
-        if ($nonce !== '' && wp_verify_nonce($nonce, 'snc_notifuse_form')) {
+        if ($nonce !== '' && wp_verify_nonce($nonce, 'tmwp_notifuse_form')) {
             return true;
         }
 
@@ -233,8 +233,8 @@ final class ProfileManager
 
     private function renderForm(string $action, string $buttonText, string $listIds, bool $showLists = false, string $consentText = '', string $consentRequired = '', string $redirectUrl = ''): string
     {
-        $ajaxAction = $action === 'unsubscribe' ? 'snc_notifuse_unsubscribe' : 'snc_notifuse_subscribe';
-        $settings = \Sinappsus\N8nConnector\Core\Settings::get('notifuse', []);
+        $ajaxAction = $action === 'unsubscribe' ? 'tmwp_notifuse_unsubscribe' : 'tmwp_notifuse_subscribe';
+        $settings = \TechnomancerWp\Connector\Core\Settings::get('notifuse', []);
         $configuredLists = $this->client->getConfiguredFormLists();
         $defaultListIds = array_values(array_filter(array_map('trim', explode(',', $listIds))));
         $configuredDefaultListId = sanitize_text_field((string) ($settings['default_list_id'] ?? ''));
@@ -262,7 +262,7 @@ final class ProfileManager
         ?>
         <form class="snc-notifuse-form" method="post" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"<?php echo $redirectUrl !== '' ? ' data-success-redirect="' . esc_url($redirectUrl) . '"' : ''; ?>>
             <input type="hidden" name="action" value="<?php echo esc_attr($ajaxAction); ?>" />
-            <input type="hidden" name="nonce" value="<?php echo esc_attr(wp_create_nonce('snc_notifuse_form')); ?>" />
+            <input type="hidden" name="nonce" value="<?php echo esc_attr(wp_create_nonce('tmwp_notifuse_form')); ?>" />
             <?php if ($action !== 'unsubscribe' && ! $showLists && $resolvedListIds !== '') : ?>
                 <input type="hidden" name="list_ids" value="<?php echo esc_attr($resolvedListIds); ?>" />
             <?php endif; ?>

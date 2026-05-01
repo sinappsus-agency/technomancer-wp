@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Flows;
+namespace TechnomancerWp\Connector\Flows;
 
 final class Logger
 {
@@ -10,7 +10,7 @@ final class Logger
     {
         global $wpdb;
 
-        return $wpdb->prefix . 'snc_logs';
+        return $wpdb->prefix . 'tmwp_logs';
     }
 
     public function log(array $entry): void

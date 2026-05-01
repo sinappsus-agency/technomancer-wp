@@ -13,7 +13,7 @@ This document tracks the current functional scope of the plugin.
 
 ## Operational Notes
 
-- Plugin folder remains `sinappsus-n8n-connector` for compatibility.
-- Main plugin bootstrap file remains `sinappsus-n8n-connector.php`.
-- REST namespace remains `/wp-json/sinappsus-n8n/v1` for compatibility.
+- Parent folder remains `sinappsus-n8n-connector` by repository choice.
+- Main plugin bootstrap file is `technomancer-wp.php`.
+- REST namespace is `/wp-json/technomancer-wp/v1`.
 - Distribution artifact is `technomancer-wp-{version}.zip`.

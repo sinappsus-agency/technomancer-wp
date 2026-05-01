@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Events;
+namespace TechnomancerWp\Connector\Events;
 
-use Sinappsus\N8nConnector\Flows\Dispatcher;
-use Sinappsus\N8nConnector\Flows\FlowRepository;
-use Sinappsus\N8nConnector\Integrations\Erpnext\Client as ErpnextClient;
-use Sinappsus\N8nConnector\Integrations\Notifuse\Client as NotifuseClient;
+use TechnomancerWp\Connector\Flows\Dispatcher;
+use TechnomancerWp\Connector\Flows\FlowRepository;
+use TechnomancerWp\Connector\Integrations\Erpnext\Client as ErpnextClient;
+use TechnomancerWp\Connector\Integrations\Notifuse\Client as NotifuseClient;
 
 final class EventManager
 {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Integrations\Notifuse\Elementor;
+namespace TechnomancerWp\Connector\Integrations\Notifuse\Elementor;
 
 if (! class_exists('\Elementor\Widget_Base')) {
     return;
@@ -12,7 +12,7 @@ final class SubscribeWidget extends \Elementor\Widget_Base
 {
     public function get_name(): string
     {
-        return 'snc_notifuse_subscribe';
+        return 'tmwp_notifuse_subscribe';
     }
 
     public function get_title(): string
@@ -87,6 +87,6 @@ final class SubscribeWidget extends \Elementor\Widget_Base
             $redirectUrl = (string) ($settings['redirect_url']['url'] ?? '');
         }
 
-        echo do_shortcode('[snc_notifuse_subscribe button_text="' . esc_attr((string) ($settings['button_text'] ?? 'Subscribe')) . '" list_ids="' . esc_attr((string) ($settings['list_ids'] ?? '')) . '" show_lists="' . esc_attr(! empty($settings['show_lists']) ? '1' : '0') . '" consent_text="' . esc_attr((string) ($settings['consent_text'] ?? '')) . '" consent_required="' . esc_attr((string) ($settings['consent_required'] ?? '')) . '" redirect_url="' . esc_attr($redirectUrl) . '"]');
+        echo do_shortcode('[tmwp_notifuse_subscribe button_text="' . esc_attr((string) ($settings['button_text'] ?? 'Subscribe')) . '" list_ids="' . esc_attr((string) ($settings['list_ids'] ?? '')) . '" show_lists="' . esc_attr(! empty($settings['show_lists']) ? '1' : '0') . '" consent_text="' . esc_attr((string) ($settings['consent_text'] ?? '')) . '" consent_required="' . esc_attr((string) ($settings['consent_required'] ?? '')) . '" redirect_url="' . esc_attr($redirectUrl) . '"]');
     }
 }

@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Admin;
+namespace TechnomancerWp\Connector\Admin;
 
-use Sinappsus\N8nConnector\Core\Settings;
-use Sinappsus\N8nConnector\Events\EventRegistry;
-use Sinappsus\N8nConnector\Events\SamplePayloadFactory;
-use Sinappsus\N8nConnector\Flows\FlowRepository;
-use Sinappsus\N8nConnector\Flows\Logger;
-use Sinappsus\N8nConnector\Integrations\Erpnext\Client as ErpnextClient;
-use Sinappsus\N8nConnector\Integrations\Notifuse\Client as NotifuseClient;
+use TechnomancerWp\Connector\Core\Settings;
+use TechnomancerWp\Connector\Events\EventRegistry;
+use TechnomancerWp\Connector\Events\SamplePayloadFactory;
+use TechnomancerWp\Connector\Flows\FlowRepository;
+use TechnomancerWp\Connector\Flows\Logger;
+use TechnomancerWp\Connector\Integrations\Erpnext\Client as ErpnextClient;
+use TechnomancerWp\Connector\Integrations\Notifuse\Client as NotifuseClient;
 
 final class AdminPages
 {
@@ -33,8 +33,8 @@ final class AdminPages
     public function registerMenu(): void
     {
         add_menu_page(
-            'SINAPPSUS n8n Connector',
-            'SINAPPSUS n8n',
+            'Technomancer WP',
+            'Technomancer WP',
             'manage_options',
             'snc-overview',
             [$this, 'renderOverview'],
@@ -53,14 +53,14 @@ final class AdminPages
 
     public function registerSettings(): void
     {
-        register_setting('snc_settings_group', 'snc_settings', [$this, 'sanitizeSettings']);
+        register_setting('tmwp_settings_group', 'tmwp_settings', [$this, 'sanitizeSettings']);
     }
 
     public function sanitizeSettings(array $settings): array
     {
         // Load the existing saved settings so that saving from one sub-page
         // does not blank out sections owned by another sub-page.
-        $existing = get_option('snc_settings', []);
+        $existing = get_option('tmwp_settings', []);
         $result = is_array($existing) ? $existing : [];
 
         $isApiForm = array_key_exists('api_token', $settings)
@@ -286,7 +286,7 @@ final class AdminPages
                         <td>
                             <?php $currentValue = (string) ($savedMapping[$sourceKey] ?? ''); ?>
                             <?php if (! empty($destinationOptions)) : ?>
-                                <select class="regular-text" name="snc_settings[erpnext][<?php echo esc_attr($prefix); ?>][<?php echo esc_attr($sourceKey); ?>]">
+                                <select class="regular-text" name="tmwp_settings[erpnext][<?php echo esc_attr($prefix); ?>][<?php echo esc_attr($sourceKey); ?>]">
                                     <option value="">Do not map</option>
                                     <?php if ($currentValue !== '' && ! isset($destinationOptions[$currentValue])) : ?>
                                         <option value="<?php echo esc_attr($currentValue); ?>" selected="selected"><?php echo esc_html('Current saved field (' . $currentValue . ')'); ?></option>
@@ -296,7 +296,7 @@ final class AdminPages
                                     <?php endforeach; ?>
                                 </select>
                             <?php else : ?>
-                                <input class="regular-text" name="snc_settings[erpnext][<?php echo esc_attr($prefix); ?>][<?php echo esc_attr($sourceKey); ?>]" value="<?php echo esc_attr($currentValue); ?>" placeholder="ERPNext field name" />
+                                <input class="regular-text" name="tmwp_settings[erpnext][<?php echo esc_attr($prefix); ?>][<?php echo esc_attr($sourceKey); ?>]" value="<?php echo esc_attr($currentValue); ?>" placeholder="ERPNext field name" />
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -338,7 +338,7 @@ final class AdminPages
             wp_die('Unauthorized');
         }
 
-        check_admin_referer('snc_save_flow');
+        check_admin_referer('tmwp_save_flow');
 
         $id = $this->flows->save([
             'id' => isset($_POST['id']) ? (int) $_POST['id'] : 0,
@@ -364,7 +364,7 @@ final class AdminPages
             wp_die('Unauthorized');
         }
 
-        check_admin_referer('snc_delete_flow');
+        check_admin_referer('tmwp_delete_flow');
 
         $flowId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
         if ($flowId > 0) {
@@ -383,7 +383,7 @@ final class AdminPages
         $settings = Settings::all();
         ?>
         <div class="wrap">
-            <h1>SINAPPSUS n8n Connector</h1>
+            <h1>Technomancer WP</h1>
             <p>Build WordPress and WooCommerce automations that send structured events to n8n, optionally sync data with ERPNext, and optionally push marketing and transactional activity into Notifuse.</p>
             <?php $this->renderHelpBox('How This Plugin Is Organized', [
                 'Flows: each flow connects one WordPress or WooCommerce event to one n8n webhook.',
@@ -452,7 +452,7 @@ final class AdminPages
                                     <td>
                                         <a href="<?php echo esc_url(add_query_arg(['page' => 'snc-flows', 'edit' => $flow['id']], admin_url('admin.php'))); ?>">Edit</a>
                                         |
-                                        <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['action' => 'snc_delete_flow', 'id' => $flow['id']], admin_url('admin-post.php')), 'snc_delete_flow')); ?>">Delete</a>
+                                        <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['action' => 'tmwp_delete_flow', 'id' => $flow['id']], admin_url('admin-post.php')), 'tmwp_delete_flow')); ?>">Delete</a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -465,9 +465,9 @@ final class AdminPages
                 <div>
                     <h2><?php echo $editingFlow ? 'Edit Flow' : 'New Flow'; ?></h2>
                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                        <input type="hidden" name="action" value="snc_save_flow" />
+                        <input type="hidden" name="action" value="tmwp_save_flow" />
                         <input type="hidden" name="id" value="<?php echo esc_attr((string) ($editingFlow['id'] ?? 0)); ?>" />
-                        <?php wp_nonce_field('snc_save_flow'); ?>
+                        <?php wp_nonce_field('tmwp_save_flow'); ?>
                         <table class="form-table">
                             <tr>
                                 <th><label for="snc-name">Name</label></th>
@@ -589,7 +589,7 @@ final class AdminPages
     public function renderApiAccess(): void
     {
         $settings = Settings::all();
-        $apiBase = untrailingslashit(rest_url('sinappsus-n8n/v1'));
+        $apiBase = untrailingslashit(rest_url('technomancer-wp/v1'));
         $token = (string) ($settings['api_token'] ?? '');
         $secret = (string) ($settings['signing_secret'] ?? '');
         $trustedOrigins = isset($settings['trusted_origins']) && is_array($settings['trusted_origins']) ? $settings['trusted_origins'] : [];
@@ -613,26 +613,26 @@ final class AdminPages
                 empty($trustedOrigins) ? 'Trusted Origins is currently optional because none are configured.' : 'If your n8n instance sends an Origin header, it must match one of the trusted origins listed below.',
             ]); ?>
             <form method="post" action="options.php">
-                <?php settings_fields('snc_settings_group'); ?>
+                <?php settings_fields('tmwp_settings_group'); ?>
                 <table class="form-table">
                     <tr>
                         <th><label for="snc-api-token">API Token</label></th>
                         <td>
-                            <input id="snc-api-token" class="regular-text" name="snc_settings[api_token]" value="<?php echo esc_attr((string) ($settings['api_token'] ?? '')); ?>" />
+                            <input id="snc-api-token" class="regular-text" name="tmwp_settings[api_token]" value="<?php echo esc_attr((string) ($settings['api_token'] ?? '')); ?>" />
                             <p class="description">Paste this into n8n as the bearer token for plugin API calls.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-signing-secret">Signing Secret</label></th>
                         <td>
-                            <input id="snc-signing-secret" class="regular-text code" name="snc_settings[signing_secret]" value="<?php echo esc_attr((string) ($settings['signing_secret'] ?? '')); ?>" />
+                            <input id="snc-signing-secret" class="regular-text code" name="tmwp_settings[signing_secret]" value="<?php echo esc_attr((string) ($settings['signing_secret'] ?? '')); ?>" />
                             <p class="description">Use the same secret in n8n when sending signed requests back into WordPress.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-trusted-origins">Trusted Origins</label></th>
                         <td>
-                            <textarea id="snc-trusted-origins" class="large-text code" rows="6" name="snc_settings[trusted_origins]"><?php echo esc_textarea(implode(PHP_EOL, $settings['trusted_origins'] ?? [])); ?></textarea>
+                            <textarea id="snc-trusted-origins" class="large-text code" rows="6" name="tmwp_settings[trusted_origins]"><?php echo esc_textarea(implode(PHP_EOL, $settings['trusted_origins'] ?? [])); ?></textarea>
                             <p class="description">One origin per line, for example https://automation.example.com. This does not replace the token or signature checks.</p>
                         </td>
                     </tr>
@@ -811,40 +811,40 @@ final class AdminPages
                 <div class="notice <?php echo $_GET['notifuse_test'] === 'success' ? 'notice-success' : 'notice-error'; ?>"><p><?php echo esc_html((string) ($_GET['message'] ?? '')); ?></p></div>
             <?php endif; ?>
             <form method="post" action="options.php">
-                <?php settings_fields('snc_settings_group'); ?>
+                <?php settings_fields('tmwp_settings_group'); ?>
                 <table class="form-table">
                     <tr>
                         <th><label for="snc-notifuse-base-url">Base URL</label></th>
                         <td>
-                            <input id="snc-notifuse-base-url" class="regular-text" name="snc_settings[notifuse][base_url]" value="<?php echo esc_attr((string) ($notifuse['base_url'] ?? '')); ?>" />
+                            <input id="snc-notifuse-base-url" class="regular-text" name="tmwp_settings[notifuse][base_url]" value="<?php echo esc_attr((string) ($notifuse['base_url'] ?? '')); ?>" />
                             <p class="description">Base URL of your existing Notifuse instance, for example https://v3.notifuse.com or your self-hosted domain.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-notifuse-api-key">API Key</label></th>
                         <td>
-                            <input id="snc-notifuse-api-key" class="regular-text" name="snc_settings[notifuse][api_key]" value="<?php echo esc_attr((string) ($notifuse['api_key'] ?? '')); ?>" />
+                            <input id="snc-notifuse-api-key" class="regular-text" name="tmwp_settings[notifuse][api_key]" value="<?php echo esc_attr((string) ($notifuse['api_key'] ?? '')); ?>" />
                             <p class="description">API key with permission to read lists, upsert contacts, track events, and send transactional notifications.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-notifuse-workspace-id">Workspace ID</label></th>
                         <td>
-                            <input id="snc-notifuse-workspace-id" class="regular-text" name="snc_settings[notifuse][workspace_id]" value="<?php echo esc_attr((string) ($notifuse['workspace_id'] ?? '')); ?>" />
+                            <input id="snc-notifuse-workspace-id" class="regular-text" name="tmwp_settings[notifuse][workspace_id]" value="<?php echo esc_attr((string) ($notifuse['workspace_id'] ?? '')); ?>" />
                             <p class="description">Required for Notifuse custom events and transactional sends. Use the workspace that owns the templates and lists you want this plugin to touch.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-notifuse-list-id">Fallback Auto-Subscribe List ID</label></th>
                         <td>
-                            <input id="snc-notifuse-list-id" class="regular-text" name="snc_settings[notifuse][default_list_id]" value="<?php echo esc_attr((string) ($notifuse['default_list_id'] ?? '')); ?>" />
+                            <input id="snc-notifuse-list-id" class="regular-text" name="tmwp_settings[notifuse][default_list_id]" value="<?php echo esc_attr((string) ($notifuse['default_list_id'] ?? '')); ?>" />
                             <p class="description">Enter an existing Notifuse list ID. The plugin will add contacts to that remote list when no more specific list selection is provided.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-notifuse-public-list-ids">Frontend Selectable Existing Lists</label></th>
                         <td>
-                            <select id="snc-notifuse-public-list-ids" name="snc_settings[notifuse][public_form_list_ids][]" multiple size="6" style="min-width:320px;">
+                            <select id="snc-notifuse-public-list-ids" name="tmwp_settings[notifuse][public_form_list_ids][]" multiple size="6" style="min-width:320px;">
                                 <?php foreach ($lists as $list) : ?>
                                     <?php $listId = (string) ($list['id'] ?? $list['uuid'] ?? ''); ?>
                                     <?php $label = (string) ($list['name'] ?? $listId); ?>
@@ -857,46 +857,46 @@ final class AdminPages
                     <tr>
                         <th>Automation Behavior</th>
                         <td>
-                            <label><input type="checkbox" name="snc_settings[notifuse][signup_on_registration]" value="1" <?php checked(! empty($notifuse['signup_on_registration']), true); ?> /> Auto-subscribe newly registered WordPress users</label><br />
-                            <label><input type="checkbox" name="snc_settings[notifuse][signup_on_checkout]" value="1" <?php checked(! empty($notifuse['signup_on_checkout']), true); ?> /> Auto-subscribe WooCommerce customers after checkout</label>
-                            <br /><label><input type="checkbox" name="snc_settings[notifuse][allow_unsubscribe]" value="1" <?php checked(! empty($notifuse['allow_unsubscribe']), true); ?> /> Enable unsubscribe shortcodes and Elementor widget</label>
-                            <br /><label><input type="checkbox" name="snc_settings[notifuse][require_consent]" value="1" <?php checked(! empty($notifuse['require_consent']), true); ?> /> Require an explicit consent checkbox on subscribe forms</label>
-                            <br /><label><input type="checkbox" name="snc_settings[notifuse][enable_custom_events]" value="1" <?php checked(! empty($notifuse['enable_custom_events']), true); ?> /> Send custom events such as signup, order paid, and refund activity into Notifuse</label>
-                            <br /><label><input type="checkbox" name="snc_settings[notifuse][enable_transactional_emails]" value="1" <?php checked(! empty($notifuse['enable_transactional_emails']), true); ?> /> Trigger transactional notifications from WordPress and WooCommerce events</label>
+                            <label><input type="checkbox" name="tmwp_settings[notifuse][signup_on_registration]" value="1" <?php checked(! empty($notifuse['signup_on_registration']), true); ?> /> Auto-subscribe newly registered WordPress users</label><br />
+                            <label><input type="checkbox" name="tmwp_settings[notifuse][signup_on_checkout]" value="1" <?php checked(! empty($notifuse['signup_on_checkout']), true); ?> /> Auto-subscribe WooCommerce customers after checkout</label>
+                            <br /><label><input type="checkbox" name="tmwp_settings[notifuse][allow_unsubscribe]" value="1" <?php checked(! empty($notifuse['allow_unsubscribe']), true); ?> /> Enable unsubscribe shortcodes and Elementor widget</label>
+                            <br /><label><input type="checkbox" name="tmwp_settings[notifuse][require_consent]" value="1" <?php checked(! empty($notifuse['require_consent']), true); ?> /> Require an explicit consent checkbox on subscribe forms</label>
+                            <br /><label><input type="checkbox" name="tmwp_settings[notifuse][enable_custom_events]" value="1" <?php checked(! empty($notifuse['enable_custom_events']), true); ?> /> Send custom events such as signup, order paid, and refund activity into Notifuse</label>
+                            <br /><label><input type="checkbox" name="tmwp_settings[notifuse][enable_transactional_emails]" value="1" <?php checked(! empty($notifuse['enable_transactional_emails']), true); ?> /> Trigger transactional notifications from WordPress and WooCommerce events</label>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-notifuse-consent-label">Consent Label</label></th>
                         <td>
-                            <input id="snc-notifuse-consent-label" class="regular-text" name="snc_settings[notifuse][consent_label]" value="<?php echo esc_attr((string) ($notifuse['consent_label'] ?? 'I agree to receive updates by email.')); ?>" />
+                            <input id="snc-notifuse-consent-label" class="regular-text" name="tmwp_settings[notifuse][consent_label]" value="<?php echo esc_attr((string) ($notifuse['consent_label'] ?? 'I agree to receive updates by email.')); ?>" />
                             <p class="description">The exact sentence visitors see next to the opt-in checkbox on subscribe forms.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-notifuse-welcome-template">Welcome Transactional Template ID</label></th>
                         <td>
-                            <input id="snc-notifuse-welcome-template" class="regular-text" name="snc_settings[notifuse][welcome_template_id]" value="<?php echo esc_attr((string) ($notifuse['welcome_template_id'] ?? '')); ?>" />
+                            <input id="snc-notifuse-welcome-template" class="regular-text" name="tmwp_settings[notifuse][welcome_template_id]" value="<?php echo esc_attr((string) ($notifuse['welcome_template_id'] ?? '')); ?>" />
                             <p class="description">Existing Notifuse notification ID to send when a new WordPress user is created.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-notifuse-order-confirmation-template">Order Confirmation Transactional Template ID</label></th>
                         <td>
-                            <input id="snc-notifuse-order-confirmation-template" class="regular-text" name="snc_settings[notifuse][order_confirmation_template_id]" value="<?php echo esc_attr((string) ($notifuse['order_confirmation_template_id'] ?? '')); ?>" />
+                            <input id="snc-notifuse-order-confirmation-template" class="regular-text" name="tmwp_settings[notifuse][order_confirmation_template_id]" value="<?php echo esc_attr((string) ($notifuse['order_confirmation_template_id'] ?? '')); ?>" />
                             <p class="description">Existing Notifuse notification ID to send when checkout completes.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-notifuse-order-paid-template">Order Paid Transactional Template ID</label></th>
                         <td>
-                            <input id="snc-notifuse-order-paid-template" class="regular-text" name="snc_settings[notifuse][order_paid_template_id]" value="<?php echo esc_attr((string) ($notifuse['order_paid_template_id'] ?? '')); ?>" />
+                            <input id="snc-notifuse-order-paid-template" class="regular-text" name="tmwp_settings[notifuse][order_paid_template_id]" value="<?php echo esc_attr((string) ($notifuse['order_paid_template_id'] ?? '')); ?>" />
                             <p class="description">Existing Notifuse notification ID to send when WooCommerce marks an order as paid.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-notifuse-refund-template">Refund Transactional Template ID</label></th>
                         <td>
-                            <input id="snc-notifuse-refund-template" class="regular-text" name="snc_settings[notifuse][refund_template_id]" value="<?php echo esc_attr((string) ($notifuse['refund_template_id'] ?? '')); ?>" />
+                            <input id="snc-notifuse-refund-template" class="regular-text" name="tmwp_settings[notifuse][refund_template_id]" value="<?php echo esc_attr((string) ($notifuse['refund_template_id'] ?? '')); ?>" />
                             <p class="description">Existing Notifuse notification ID to send when an order refund is created.</p>
                         </td>
                     </tr>
@@ -922,11 +922,11 @@ final class AdminPages
                 </tbody>
             </table>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                <input type="hidden" name="action" value="snc_test_notifuse" />
-                <?php wp_nonce_field('snc_test_notifuse'); ?>
+                <input type="hidden" name="action" value="tmwp_test_notifuse" />
+                <?php wp_nonce_field('tmwp_test_notifuse'); ?>
                 <?php submit_button('Test Notifuse Connection', 'secondary'); ?>
             </form>
-            <p>Elementor widgets available when Elementor is active: subscribe and unsubscribe. Shortcodes: <code>[snc_notifuse_subscribe]</code> and <code>[snc_notifuse_unsubscribe]</code>. Both shortcodes also support <code>redirect_url</code> for redirecting after a successful submission, for example <code>[snc_notifuse_subscribe list_ids="example-list" redirect_url="/free-download/"]</code>. Subscribe forms can optionally show the frontend-selectable lists and the consent checkbox configured here.</p>
+            <p>Elementor widgets available when Elementor is active: subscribe and unsubscribe. Shortcodes: <code>[tmwp_notifuse_subscribe]</code> and <code>[tmwp_notifuse_unsubscribe]</code>. Both shortcodes also support <code>redirect_url</code> for redirecting after a successful submission, for example <code>[tmwp_notifuse_subscribe list_ids="example-list" redirect_url="/free-download/"]</code>. Subscribe forms can optionally show the frontend-selectable lists and the consent checkbox configured here.</p>
         </div>
         <?php
     }
@@ -962,78 +962,78 @@ final class AdminPages
                 <div class="notice <?php echo $_GET['erp_action'] === 'success' ? 'notice-success' : 'notice-error'; ?>"><p><?php echo esc_html((string) ($_GET['message'] ?? '')); ?></p></div>
             <?php endif; ?>
             <form method="post" action="options.php">
-                <?php settings_fields('snc_settings_group'); ?>
+                <?php settings_fields('tmwp_settings_group'); ?>
                 <table class="form-table">
                     <tr>
                         <th><label for="snc-erp-host-url">Host URL</label></th>
                         <td>
-                            <input id="snc-erp-host-url" class="regular-text" name="snc_settings[erpnext][host_url]" value="<?php echo esc_attr((string) ($erpnext['host_url'] ?? '')); ?>" />
+                            <input id="snc-erp-host-url" class="regular-text" name="tmwp_settings[erpnext][host_url]" value="<?php echo esc_attr((string) ($erpnext['host_url'] ?? '')); ?>" />
                             <p class="description">Base URL of your ERPNext site, for example https://erp.example.com.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-api-key">API Key</label></th>
                         <td>
-                            <input id="snc-erp-api-key" class="regular-text" name="snc_settings[erpnext][api_key]" value="<?php echo esc_attr((string) ($erpnext['api_key'] ?? '')); ?>" />
+                            <input id="snc-erp-api-key" class="regular-text" name="tmwp_settings[erpnext][api_key]" value="<?php echo esc_attr((string) ($erpnext['api_key'] ?? '')); ?>" />
                             <p class="description">API credentials used for ERPNext REST calls.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-api-secret">API Secret</label></th>
                         <td>
-                            <input id="snc-erp-api-secret" class="regular-text" name="snc_settings[erpnext][api_secret]" value="<?php echo esc_attr((string) ($erpnext['api_secret'] ?? '')); ?>" />
+                            <input id="snc-erp-api-secret" class="regular-text" name="tmwp_settings[erpnext][api_secret]" value="<?php echo esc_attr((string) ($erpnext['api_secret'] ?? '')); ?>" />
                             <p class="description">Keep this matched to the API key above.</p>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-company">Company</label></th>
                         <td>
-                            <?php $this->renderErpSelectOrInput('snc-erp-company', 'snc_settings[erpnext][company]', (string) ($erpnext['company'] ?? ''), $companyOptions, 'Default ERPNext company name used for Sales Order creation.'); ?>
+                            <?php $this->renderErpSelectOrInput('snc-erp-company', 'tmwp_settings[erpnext][company]', (string) ($erpnext['company'] ?? ''), $companyOptions, 'Default ERPNext company name used for Sales Order creation.'); ?>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-warehouse">Warehouse</label></th>
                         <td>
-                            <?php $this->renderErpSelectOrInput('snc-erp-warehouse', 'snc_settings[erpnext][warehouse]', (string) ($erpnext['warehouse'] ?? ''), $warehouseOptions, 'Default warehouse used when importing stock or exporting products.'); ?>
+                            <?php $this->renderErpSelectOrInput('snc-erp-warehouse', 'tmwp_settings[erpnext][warehouse]', (string) ($erpnext['warehouse'] ?? ''), $warehouseOptions, 'Default warehouse used when importing stock or exporting products.'); ?>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-item-group">Item Group</label></th>
                         <td>
-                            <?php $this->renderErpSelectOrInput('snc-erp-item-group', 'snc_settings[erpnext][item_group]', (string) ($erpnext['item_group'] ?? ''), $itemGroupOptions, 'Fallback ERPNext item group for exported WooCommerce products.'); ?>
+                            <?php $this->renderErpSelectOrInput('snc-erp-item-group', 'tmwp_settings[erpnext][item_group]', (string) ($erpnext['item_group'] ?? ''), $itemGroupOptions, 'Fallback ERPNext item group for exported WooCommerce products.'); ?>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-price-list">Price List</label></th>
                         <td>
-                            <?php $this->renderErpSelectOrInput('snc-erp-price-list', 'snc_settings[erpnext][price_list]', (string) ($erpnext['price_list'] ?? ''), $priceListOptions, 'Optional ERPNext price list reference if your process depends on one. Imported products will use this price list when available.'); ?>
+                            <?php $this->renderErpSelectOrInput('snc-erp-price-list', 'tmwp_settings[erpnext][price_list]', (string) ($erpnext['price_list'] ?? ''), $priceListOptions, 'Optional ERPNext price list reference if your process depends on one. Imported products will use this price list when available.'); ?>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-customer-group">Customer Group</label></th>
                         <td>
-                            <?php $this->renderErpSelectOrInput('snc-erp-customer-group', 'snc_settings[erpnext][customer_group]', (string) ($erpnext['customer_group'] ?? 'Commercial'), $customerGroupOptions, 'Fallback ERPNext customer group when WordPress users do not already store one.'); ?>
+                            <?php $this->renderErpSelectOrInput('snc-erp-customer-group', 'tmwp_settings[erpnext][customer_group]', (string) ($erpnext['customer_group'] ?? 'Commercial'), $customerGroupOptions, 'Fallback ERPNext customer group when WordPress users do not already store one.'); ?>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-territory">Territory</label></th>
                         <td>
-                            <?php $this->renderErpSelectOrInput('snc-erp-territory', 'snc_settings[erpnext][territory]', (string) ($erpnext['territory'] ?? 'All Territories'), $territoryOptions, 'Fallback ERPNext territory for synced customers.'); ?>
+                            <?php $this->renderErpSelectOrInput('snc-erp-territory', 'tmwp_settings[erpnext][territory]', (string) ($erpnext['territory'] ?? 'All Territories'), $territoryOptions, 'Fallback ERPNext territory for synced customers.'); ?>
                         </td>
                     </tr>
                     <tr>
                         <th>Sync Permissions</th>
                         <td>
-                            <label><input type="checkbox" name="snc_settings[erpnext][sync_customers]" value="1" <?php checked(! empty($erpnext['sync_customers']), true); ?> /> Allow WordPress and WooCommerce customers to sync into ERPNext</label><br />
-                            <label><input type="checkbox" name="snc_settings[erpnext][sync_orders]" value="1" <?php checked(! empty($erpnext['sync_orders']), true); ?> /> Allow WooCommerce orders to sync into ERPNext</label><br />
-                            <label><input type="checkbox" name="snc_settings[erpnext][sync_products]" value="1" <?php checked(! empty($erpnext['sync_products']), true); ?> /> Allow product catalog import and export</label><br />
-                            <label><input type="checkbox" name="snc_settings[erpnext][sync_stock]" value="1" <?php checked(! empty($erpnext['sync_stock']), true); ?> /> Allow stock synchronization jobs</label>
+                            <label><input type="checkbox" name="tmwp_settings[erpnext][sync_customers]" value="1" <?php checked(! empty($erpnext['sync_customers']), true); ?> /> Allow WordPress and WooCommerce customers to sync into ERPNext</label><br />
+                            <label><input type="checkbox" name="tmwp_settings[erpnext][sync_orders]" value="1" <?php checked(! empty($erpnext['sync_orders']), true); ?> /> Allow WooCommerce orders to sync into ERPNext</label><br />
+                            <label><input type="checkbox" name="tmwp_settings[erpnext][sync_products]" value="1" <?php checked(! empty($erpnext['sync_products']), true); ?> /> Allow product catalog import and export</label><br />
+                            <label><input type="checkbox" name="tmwp_settings[erpnext][sync_stock]" value="1" <?php checked(! empty($erpnext['sync_stock']), true); ?> /> Allow stock synchronization jobs</label>
                         </td>
                     </tr>
                     <tr>
                         <th><label for="snc-erp-stock-source">Stock Source of Truth</label></th>
                         <td>
-                            <select id="snc-erp-stock-source" name="snc_settings[erpnext][stock_source]">
+                            <select id="snc-erp-stock-source" name="tmwp_settings[erpnext][stock_source]">
                                 <option value="erpnext" <?php selected((string) ($erpnext['stock_source'] ?? 'erpnext'), 'erpnext'); ?>>ERPNext</option>
                                 <option value="woocommerce" <?php selected((string) ($erpnext['stock_source'] ?? 'erpnext'), 'woocommerce'); ?>>WooCommerce</option>
                             </select>
@@ -1043,8 +1043,8 @@ final class AdminPages
                     <tr>
                         <th><label for="snc-erp-sync-interval">Sync Interval</label></th>
                         <td>
-                            <select id="snc-erp-sync-interval" name="snc_settings[erpnext][sync_interval]">
-                                <option value="snc_every_fifteen_minutes" <?php selected((string) ($erpnext['sync_interval'] ?? 'hourly'), 'snc_every_fifteen_minutes'); ?>>Every 15 minutes</option>
+                            <select id="snc-erp-sync-interval" name="tmwp_settings[erpnext][sync_interval]">
+                                <option value="tmwp_every_fifteen_minutes" <?php selected((string) ($erpnext['sync_interval'] ?? 'hourly'), 'tmwp_every_fifteen_minutes'); ?>>Every 15 minutes</option>
                                 <option value="hourly" <?php selected((string) ($erpnext['sync_interval'] ?? 'hourly'), 'hourly'); ?>>Hourly</option>
                                 <option value="twicedaily" <?php selected((string) ($erpnext['sync_interval'] ?? 'hourly'), 'twicedaily'); ?>>Twice daily</option>
                                 <option value="daily" <?php selected((string) ($erpnext['sync_interval'] ?? 'hourly'), 'daily'); ?>>Daily</option>
@@ -1060,46 +1060,46 @@ final class AdminPages
                 <?php submit_button('Save ERPNext Settings'); ?>
             </form>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                <input type="hidden" name="action" value="snc_test_erpnext" />
-                <?php wp_nonce_field('snc_test_erpnext'); ?>
+                <input type="hidden" name="action" value="tmwp_test_erpnext" />
+                <?php wp_nonce_field('tmwp_test_erpnext'); ?>
                 <?php submit_button('Test ERPNext Connection', 'secondary'); ?>
             </form>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                <input type="hidden" name="action" value="snc_test_erp_contracts" />
-                <?php wp_nonce_field('snc_test_erp_contracts'); ?>
+                <input type="hidden" name="action" value="tmwp_test_erp_contracts" />
+                <?php wp_nonce_field('tmwp_test_erp_contracts'); ?>
                 <?php submit_button('Run ERP Contract Diagnostics', 'secondary'); ?>
             </form>
             <h2>Catalog and Stock Tools</h2>
             <p class="description">These tools act on your live WooCommerce and ERPNext data. They do not change the saved configuration above.</p>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-bottom:16px;">
-                <input type="hidden" name="action" value="snc_erp_import_products" />
-                <?php wp_nonce_field('snc_erp_import_products'); ?>
+                <input type="hidden" name="action" value="tmwp_erp_import_products" />
+                <?php wp_nonce_field('tmwp_erp_import_products'); ?>
                 <label for="snc-erp-import-limit">Import latest items from ERPNext</label>
                 <input id="snc-erp-import-limit" type="number" name="limit" min="1" max="100" value="20" />
                 <?php submit_button('Import Products from ERPNext', 'secondary', 'submit', false); ?>
             </form>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-bottom:16px;">
-                <input type="hidden" name="action" value="snc_erp_export_product" />
-                <?php wp_nonce_field('snc_erp_export_product'); ?>
+                <input type="hidden" name="action" value="tmwp_erp_export_product" />
+                <?php wp_nonce_field('tmwp_erp_export_product'); ?>
                 <label for="snc-erp-export-product-id">WooCommerce product ID</label>
                 <input id="snc-erp-export-product-id" type="number" name="product_id" min="1" />
                 <?php submit_button('Export Product to ERPNext', 'secondary', 'submit', false); ?>
             </form>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                <input type="hidden" name="action" value="snc_erp_verify_stock" />
-                <?php wp_nonce_field('snc_erp_verify_stock'); ?>
+                <input type="hidden" name="action" value="tmwp_erp_verify_stock" />
+                <?php wp_nonce_field('tmwp_erp_verify_stock'); ?>
                 <label for="snc-erp-stock-product-id">WooCommerce product ID</label>
                 <input id="snc-erp-stock-product-id" type="number" name="product_id" min="1" />
                 <?php submit_button('Verify Stock Against ERPNext', 'secondary', 'submit', false); ?>
             </form>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top:16px;">
-                <input type="hidden" name="action" value="snc_erp_run_product_sync" />
-                <?php wp_nonce_field('snc_erp_run_product_sync'); ?>
+                <input type="hidden" name="action" value="tmwp_erp_run_product_sync" />
+                <?php wp_nonce_field('tmwp_erp_run_product_sync'); ?>
                 <?php submit_button('Run Product Sync Now', 'secondary', 'submit', false); ?>
             </form>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top:8px;">
-                <input type="hidden" name="action" value="snc_erp_run_stock_sync" />
-                <?php wp_nonce_field('snc_erp_run_stock_sync'); ?>
+                <input type="hidden" name="action" value="tmwp_erp_run_stock_sync" />
+                <?php wp_nonce_field('tmwp_erp_run_stock_sync'); ?>
                 <?php submit_button('Run Stock Sync Now', 'secondary', 'submit', false); ?>
             </form>
             <p>ERP profile fields are also added to WordPress registration and user profile screens so staff can store ERP-specific customer metadata without leaving WordPress.</p>
@@ -1152,8 +1152,8 @@ final class AdminPages
                 <?php submit_button('Filter Logs', 'secondary', 'submit', false); ?>
             </form>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-bottom:16px;">
-                <input type="hidden" name="action" value="snc_clear_logs" />
-                <?php wp_nonce_field('snc_clear_logs'); ?>
+                <input type="hidden" name="action" value="tmwp_clear_logs" />
+                <?php wp_nonce_field('tmwp_clear_logs'); ?>
                 <?php submit_button('Clear Logs', 'delete', 'submit', false); ?>
             </form>
             <p class="description">Replay is only available for entries that still have both a stored payload and an associated flow.</p>
@@ -1180,7 +1180,7 @@ final class AdminPages
                             <td><?php echo esc_html(is_array($log['message_json']) ? wp_json_encode($log['message_json']) : (string) ($log['message'] ?? '')); ?></td>
                             <td>
                                 <?php if ((int) $log['flow_id'] > 0 && ! empty($log['payload'])) : ?>
-                                    <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['action' => 'snc_replay_log', 'id' => $log['id']], admin_url('admin-post.php')), 'snc_replay_log')); ?>">Replay</a>
+                                    <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['action' => 'tmwp_replay_log', 'id' => $log['id']], admin_url('admin-post.php')), 'tmwp_replay_log')); ?>">Replay</a>
                                 <?php else : ?>
                                     -
                                 <?php endif; ?>
@@ -1210,15 +1210,15 @@ final class AdminPages
             ]); ?>
             <p>Plugin REST endpoints:</p>
             <ul>
-                <li><code>/wp-json/sinappsus-n8n/v1/health</code></li>
-                <li><code>/wp-json/sinappsus-n8n/v1/events</code></li>
-                <li><code>/wp-json/sinappsus-n8n/v1/flows</code></li>
+                <li><code>/wp-json/technomancer-wp/v1/health</code></li>
+                <li><code>/wp-json/technomancer-wp/v1/events</code></li>
+                <li><code>/wp-json/technomancer-wp/v1/flows</code></li>
             </ul>
             <h2>Manual Test Send</h2>
             <p class="description">This sends a sample payload through the selected flow using its saved trigger, payload mode, and optional preview entity ID.</p>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                <input type="hidden" name="action" value="snc_send_test_flow" />
-                <?php wp_nonce_field('snc_send_test_flow'); ?>
+                <input type="hidden" name="action" value="tmwp_send_test_flow" />
+                <?php wp_nonce_field('tmwp_send_test_flow'); ?>
                 <table class="form-table">
                     <tr>
                         <th><label for="snc-test-flow">Flow</label></th>
@@ -1244,7 +1244,7 @@ final class AdminPages
             wp_die('Unauthorized');
         }
 
-        check_admin_referer('snc_test_notifuse');
+        check_admin_referer('tmwp_test_notifuse');
 
         $result = $this->notifuseClient->testConnection();
         wp_safe_redirect(add_query_arg([
@@ -1261,7 +1261,7 @@ final class AdminPages
             wp_die('Unauthorized');
         }
 
-        check_admin_referer('snc_test_erpnext');
+        check_admin_referer('tmwp_test_erpnext');
 
         $result = $this->erpnextClient->testConnection();
         wp_safe_redirect(add_query_arg([
@@ -1278,7 +1278,7 @@ final class AdminPages
             wp_die('Unauthorized');
         }
 
-        check_admin_referer('snc_test_erp_contracts');
+        check_admin_referer('tmwp_test_erp_contracts');
 
         $result = $this->erpnextClient->contractDiagnostics();
         wp_safe_redirect(add_query_arg([
@@ -1295,7 +1295,7 @@ final class AdminPages
             wp_die('Unauthorized');
         }
 
-        check_admin_referer('snc_replay_log');
+        check_admin_referer('tmwp_replay_log');
 
         $logId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
         $entry = $this->logger->find($logId);
@@ -1303,7 +1303,7 @@ final class AdminPages
         if (is_array($entry) && ! empty($entry['payload']) && (int) $entry['flow_id'] > 0) {
             $payload = json_decode((string) $entry['payload'], true);
             if (is_array($payload)) {
-                do_action('sinappsus_n8n_process_delivery', (int) $entry['flow_id'], $payload);
+                do_action('tmwp_process_delivery', (int) $entry['flow_id'], $payload);
             }
         }
 
@@ -1317,7 +1317,7 @@ final class AdminPages
             wp_die('Unauthorized');
         }
 
-        check_admin_referer('snc_send_test_flow');
+        check_admin_referer('tmwp_send_test_flow');
 
         $flowId = isset($_POST['flow_id']) ? (int) $_POST['flow_id'] : 0;
         $flow = $this->flows->find($flowId);
@@ -1334,7 +1334,7 @@ final class AdminPages
                 'queued_at' => gmdate('c'),
             ];
 
-            do_action('sinappsus_n8n_process_delivery', $flowId, $payload);
+            do_action('tmwp_process_delivery', $flowId, $payload);
         }
 
         wp_safe_redirect(add_query_arg(['page' => 'snc-tools'], admin_url('admin.php')));
@@ -1347,7 +1347,7 @@ final class AdminPages
             wp_die('Unauthorized');
         }
 
-        check_admin_referer('snc_clear_logs');
+        check_admin_referer('tmwp_clear_logs');
         $this->logger->clear();
         wp_safe_redirect(add_query_arg(['page' => 'snc-logs'], admin_url('admin.php')));
         exit;

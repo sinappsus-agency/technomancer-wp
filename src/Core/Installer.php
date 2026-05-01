@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Core;
+namespace TechnomancerWp\Connector\Core;
 
 final class Installer
 {
@@ -13,8 +13,8 @@ final class Installer
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
         $charsetCollate = $wpdb->get_charset_collate();
-        $flowsTable = $wpdb->prefix . 'snc_flows';
-        $logsTable = $wpdb->prefix . 'snc_logs';
+        $flowsTable = $wpdb->prefix . 'tmwp_flows';
+        $logsTable = $wpdb->prefix . 'tmwp_logs';
 
         $flowsSql = "CREATE TABLE {$flowsTable} (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -53,7 +53,7 @@ final class Installer
         dbDelta($flowsSql);
         dbDelta($logsSql);
 
-        add_option('snc_settings', [
+        add_option('tmwp_settings', [
             'api_token' => wp_generate_password(40, false, false),
             'signing_secret' => wp_generate_password(64, true, true),
             'trusted_origins' => [],

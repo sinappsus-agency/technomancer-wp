@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Integrations\Erpnext\Admin;
+namespace TechnomancerWp\Connector\Integrations\Erpnext\Admin;
 
-use Sinappsus\N8nConnector\Flows\Logger;
-use Sinappsus\N8nConnector\Integrations\Erpnext\Client;
+use TechnomancerWp\Connector\Flows\Logger;
+use TechnomancerWp\Connector\Integrations\Erpnext\Client;
 
 final class ProductSyncManager
 {
@@ -21,7 +21,7 @@ final class ProductSyncManager
 
     public function importProducts(): void
     {
-        $this->guard('snc_erp_import_products');
+        $this->guard('tmwp_erp_import_products');
         $limit = isset($_POST['limit']) ? max(1, min(100, (int) $_POST['limit'])) : 20;
         $result = $this->client->importItemsToWooCommerce($limit);
         $this->redirect('snc-erpnext', 'erp_action', $result);
@@ -29,7 +29,7 @@ final class ProductSyncManager
 
     public function exportProduct(): void
     {
-        $this->guard('snc_erp_export_product');
+        $this->guard('tmwp_erp_export_product');
         $productId = isset($_POST['product_id']) ? (int) $_POST['product_id'] : 0;
         $result = $this->client->exportProductToErpnext($productId);
         $this->redirect('snc-erpnext', 'erp_action', $result);
@@ -37,7 +37,7 @@ final class ProductSyncManager
 
     public function verifyStock(): void
     {
-        $this->guard('snc_erp_verify_stock');
+        $this->guard('tmwp_erp_verify_stock');
         $productId = isset($_POST['product_id']) ? (int) $_POST['product_id'] : 0;
         $result = $this->client->verifyStockLevel($productId);
         $this->redirect('snc-erpnext', 'erp_action', $result);
@@ -45,14 +45,14 @@ final class ProductSyncManager
 
     public function runProductSync(): void
     {
-        $this->guard('snc_erp_run_product_sync');
+        $this->guard('tmwp_erp_run_product_sync');
         $result = $this->client->importItemsToWooCommerce(50);
         $this->redirect('snc-erpnext', 'erp_action', $result);
     }
 
     public function runStockSync(): void
     {
-        $this->guard('snc_erp_run_stock_sync');
+        $this->guard('tmwp_erp_run_stock_sync');
         $result = $this->client->syncStockSnapshot(50);
         $this->redirect('snc-erpnext', 'erp_action', $result);
     }

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Integrations\Notifuse\Elementor;
+namespace TechnomancerWp\Connector\Integrations\Notifuse\Elementor;
 
 if (! class_exists('\Elementor\Widget_Base')) {
     return;
@@ -12,7 +12,7 @@ final class UnsubscribeWidget extends \Elementor\Widget_Base
 {
     public function get_name(): string
     {
-        return 'snc_notifuse_unsubscribe';
+        return 'tmwp_notifuse_unsubscribe';
     }
 
     public function get_title(): string
@@ -59,6 +59,6 @@ final class UnsubscribeWidget extends \Elementor\Widget_Base
             $redirectUrl = (string) ($settings['redirect_url']['url'] ?? '');
         }
 
-        echo do_shortcode('[snc_notifuse_unsubscribe button_text="' . esc_attr((string) ($settings['button_text'] ?? 'Unsubscribe')) . '" redirect_url="' . esc_attr($redirectUrl) . '"]');
+        echo do_shortcode('[tmwp_notifuse_unsubscribe button_text="' . esc_attr((string) ($settings['button_text'] ?? 'Unsubscribe')) . '" redirect_url="' . esc_attr($redirectUrl) . '"]');
     }
 }

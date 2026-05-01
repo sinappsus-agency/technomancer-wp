@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Flows;
+namespace TechnomancerWp\Connector\Flows;
 
 final class PayloadFormatter
 {
@@ -38,7 +38,7 @@ final class PayloadFormatter
                 'timezone' => wp_timezone_string(),
                 'is_multisite' => is_multisite(),
                 'current_user_id' => get_current_user_id(),
-                'plugin_version' => defined('SINAPPSUS_N8N_CONNECTOR_VERSION') ? SINAPPSUS_N8N_CONNECTOR_VERSION : '',
+                'plugin_version' => defined('TECHNOMANCER_WP_VERSION') ? TECHNOMANCER_WP_VERSION : '',
             ];
         }
 

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Integrations\Notifuse;
+namespace TechnomancerWp\Connector\Integrations\Notifuse;
 
-use Sinappsus\N8nConnector\Core\Settings;
-use Sinappsus\N8nConnector\Flows\Logger;
+use TechnomancerWp\Connector\Core\Settings;
+use TechnomancerWp\Connector\Flows\Logger;
 
 final class Client
 {
@@ -146,7 +146,7 @@ final class Client
 
     public function updateUserLists(int $userId, array $listIds): void
     {
-        update_user_meta($userId, 'snc_notifuse_list_ids', array_values(array_filter(array_map('sanitize_text_field', $listIds))));
+        update_user_meta($userId, 'tmwp_notifuse_list_ids', array_values(array_filter(array_map('sanitize_text_field', $listIds))));
         $user = get_userdata($userId);
 
         if (! $user) {
@@ -385,7 +385,7 @@ final class Client
 
     private function getUserListIds(int $userId): array
     {
-        $stored = get_user_meta($userId, 'snc_notifuse_list_ids', true);
+        $stored = get_user_meta($userId, 'tmwp_notifuse_list_ids', true);
 
         if (is_array($stored) && ! empty($stored)) {
             return array_values(array_filter(array_map('sanitize_text_field', $stored)));

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Integrations\Erpnext\Admin;
+namespace TechnomancerWp\Connector\Integrations\Erpnext\Admin;
 
-use Sinappsus\N8nConnector\Integrations\Erpnext\Client;
+use TechnomancerWp\Connector\Integrations\Erpnext\Client;
 
 final class ProfileFieldsManager
 {
@@ -31,17 +31,17 @@ final class ProfileFieldsManager
         $territoryOptions = $this->client->getReferenceOptions('Territory');
         ?>
         <p>
-            <label for="snc_erp_customer_name">ERP Customer Name<br />
-                <input type="text" name="snc_erp_customer_name" id="snc_erp_customer_name" class="input" value="" />
+            <label for="tmwp_erp_customer_name">ERP Customer Name<br />
+                <input type="text" name="tmwp_erp_customer_name" id="tmwp_erp_customer_name" class="input" value="" />
             </label>
         </p>
         <p>
-            <label for="snc_erp_customer_group">ERP Customer Group<br /></label>
-            <?php $this->renderSelectOrInput('snc_erp_customer_group', 'snc_erp_customer_group', 'Commercial', $customerGroupOptions, 'input'); ?>
+            <label for="tmwp_erp_customer_group">ERP Customer Group<br /></label>
+            <?php $this->renderSelectOrInput('tmwp_erp_customer_group', 'tmwp_erp_customer_group', 'Commercial', $customerGroupOptions, 'input'); ?>
         </p>
         <p>
-            <label for="snc_erp_territory">ERP Territory<br /></label>
-            <?php $this->renderSelectOrInput('snc_erp_territory', 'snc_erp_territory', 'All Territories', $territoryOptions, 'input'); ?>
+            <label for="tmwp_erp_territory">ERP Territory<br /></label>
+            <?php $this->renderSelectOrInput('tmwp_erp_territory', 'tmwp_erp_territory', 'All Territories', $territoryOptions, 'input'); ?>
         </p>
         <?php
     }
@@ -60,20 +60,20 @@ final class ProfileFieldsManager
         <h2>ERPNext Profile Fields</h2>
         <table class="form-table">
             <tr>
-                <th><label for="snc_erp_customer_name">ERP Customer Name</label></th>
-                <td><input type="text" name="snc_erp_customer_name" id="snc_erp_customer_name" class="regular-text" value="<?php echo esc_attr((string) get_user_meta($user->ID, 'snc_erp_customer_name', true)); ?>" /></td>
+                <th><label for="tmwp_erp_customer_name">ERP Customer Name</label></th>
+                <td><input type="text" name="tmwp_erp_customer_name" id="tmwp_erp_customer_name" class="regular-text" value="<?php echo esc_attr((string) get_user_meta($user->ID, 'tmwp_erp_customer_name', true)); ?>" /></td>
             </tr>
             <tr>
-                <th><label for="snc_erp_customer_group">ERP Customer Group</label></th>
-                <td><?php $this->renderSelectOrInput('snc_erp_customer_group', 'snc_erp_customer_group', (string) get_user_meta($user->ID, 'snc_erp_customer_group', true), $customerGroupOptions, 'regular-text'); ?></td>
+                <th><label for="tmwp_erp_customer_group">ERP Customer Group</label></th>
+                <td><?php $this->renderSelectOrInput('tmwp_erp_customer_group', 'tmwp_erp_customer_group', (string) get_user_meta($user->ID, 'tmwp_erp_customer_group', true), $customerGroupOptions, 'regular-text'); ?></td>
             </tr>
             <tr>
-                <th><label for="snc_erp_territory">ERP Territory</label></th>
-                <td><?php $this->renderSelectOrInput('snc_erp_territory', 'snc_erp_territory', (string) get_user_meta($user->ID, 'snc_erp_territory', true), $territoryOptions, 'regular-text'); ?></td>
+                <th><label for="tmwp_erp_territory">ERP Territory</label></th>
+                <td><?php $this->renderSelectOrInput('tmwp_erp_territory', 'tmwp_erp_territory', (string) get_user_meta($user->ID, 'tmwp_erp_territory', true), $territoryOptions, 'regular-text'); ?></td>
             </tr>
             <tr>
-                <th><label for="snc_erp_company">ERP Company</label></th>
-                <td><?php $this->renderSelectOrInput('snc_erp_company', 'snc_erp_company', (string) get_user_meta($user->ID, 'snc_erp_company', true), $companyOptions, 'regular-text'); ?></td>
+                <th><label for="tmwp_erp_company">ERP Company</label></th>
+                <td><?php $this->renderSelectOrInput('tmwp_erp_company', 'tmwp_erp_company', (string) get_user_meta($user->ID, 'tmwp_erp_company', true), $companyOptions, 'regular-text'); ?></td>
             </tr>
         </table>
         <?php
@@ -90,10 +90,10 @@ final class ProfileFieldsManager
 
     private function persistFields(int $userId): void
     {
-        update_user_meta($userId, 'snc_erp_customer_name', sanitize_text_field((string) ($_POST['snc_erp_customer_name'] ?? '')));
-        update_user_meta($userId, 'snc_erp_customer_group', sanitize_text_field((string) ($_POST['snc_erp_customer_group'] ?? '')));
-        update_user_meta($userId, 'snc_erp_territory', sanitize_text_field((string) ($_POST['snc_erp_territory'] ?? '')));
-        update_user_meta($userId, 'snc_erp_company', sanitize_text_field((string) ($_POST['snc_erp_company'] ?? '')));
+        update_user_meta($userId, 'tmwp_erp_customer_name', sanitize_text_field((string) ($_POST['tmwp_erp_customer_name'] ?? '')));
+        update_user_meta($userId, 'tmwp_erp_customer_group', sanitize_text_field((string) ($_POST['tmwp_erp_customer_group'] ?? '')));
+        update_user_meta($userId, 'tmwp_erp_territory', sanitize_text_field((string) ($_POST['tmwp_erp_territory'] ?? '')));
+        update_user_meta($userId, 'tmwp_erp_company', sanitize_text_field((string) ($_POST['tmwp_erp_company'] ?? '')));
     }
 
     private function renderSelectOrInput(string $id, string $name, string $value, array $options, string $className): void

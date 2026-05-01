@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Security;
+namespace TechnomancerWp\Connector\Security;
 
-use Sinappsus\N8nConnector\Core\Settings;
-use Sinappsus\N8nConnector\Flows\Logger;
+use TechnomancerWp\Connector\Core\Settings;
+use TechnomancerWp\Connector\Flows\Logger;
 use WP_Error;
 use WP_REST_Request;
 
@@ -30,11 +30,11 @@ final class RequestAuthorizer
         $body = $request->get_body();
 
         if ($header !== 'Bearer ' . $token) {
-            return new WP_Error('snc_unauthorized', 'Invalid API token.', ['status' => 401]);
+            return new WP_Error('tmwp_unauthorized', 'Invalid API token.', ['status' => 401]);
         }
 
         if (! empty($trustedOrigins) && $origin !== '' && ! in_array($origin, $trustedOrigins, true)) {
-            return new WP_Error('snc_forbidden_origin', 'Origin not approved.', ['status' => 403]);
+            return new WP_Error('tmwp_forbidden_origin', 'Origin not approved.', ['status' => 403]);
         }
 
         if ($secret !== '') {
@@ -46,7 +46,7 @@ final class RequestAuthorizer
                     'message' => ['reason' => 'signature_mismatch', 'origin' => $origin],
                 ]);
 
-                return new WP_Error('snc_invalid_signature', 'Invalid request signature.', ['status' => 401]);
+                return new WP_Error('tmwp_invalid_signature', 'Invalid request signature.', ['status' => 401]);
             }
         }
 

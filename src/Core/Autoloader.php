@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Core;
+namespace TechnomancerWp\Connector\Core;
 
 final class Autoloader
 {
@@ -13,7 +13,7 @@ final class Autoloader
 
     private static function autoload(string $className): void
     {
-        $prefix = 'Sinappsus\\N8nConnector\\';
+        $prefix = 'TechnomancerWp\\Connector\\';
 
         if (strpos($className, $prefix) !== 0) {
             return;
@@ -21,7 +21,7 @@ final class Autoloader
 
         $relativeClass = substr($className, strlen($prefix));
         $relativePath = str_replace('\\', DIRECTORY_SEPARATOR, $relativeClass) . '.php';
-        $filePath = SINAPPSUS_N8N_CONNECTOR_PATH . 'src/' . $relativePath;
+        $filePath = TECHNOMANCER_WP_PATH . 'src/' . $relativePath;
 
         if (file_exists($filePath)) {
             require_once $filePath;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Flows;
+namespace TechnomancerWp\Connector\Flows;
 
 final class Dispatcher
 {
@@ -23,7 +23,7 @@ final class Dispatcher
     {
         $payload = $this->payloadFormatter->format($flow, $payload);
 
-        wp_schedule_single_event(time() + 1, 'sinappsus_n8n_process_delivery', [$flow['id'], $payload]);
+        wp_schedule_single_event(time() + 1, 'tmwp_process_delivery', [$flow['id'], $payload]);
     }
 
     public function processDelivery(int $flowId, array $payload): void
@@ -89,7 +89,7 @@ final class Dispatcher
         if ($attempt < $maxAttempts) {
             $payload['delivery']['attempt'] = $attempt + 1;
             $delay = min(300, $attempt * 30);
-            wp_schedule_single_event(time() + $delay, 'sinappsus_n8n_process_delivery', [$flowId, $payload]);
+            wp_schedule_single_event(time() + $delay, 'tmwp_process_delivery', [$flowId, $payload]);
 
             $this->logger->log([
                 'flow_id' => $flowId,

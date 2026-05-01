@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Integrations\Erpnext\Admin;
+namespace TechnomancerWp\Connector\Integrations\Erpnext\Admin;
 
-use Sinappsus\N8nConnector\Integrations\Erpnext\Client;
+use TechnomancerWp\Connector\Integrations\Erpnext\Client;
 
 final class ProductFieldsManager
 {
@@ -32,14 +32,14 @@ final class ProductFieldsManager
 
         echo '<div class="options_group">';
         woocommerce_wp_text_input([
-            'id' => '_snc_erp_item_code',
+            'id' => '_tmwp_erp_item_code',
             'label' => 'ERP Item Code',
             'desc_tip' => true,
             'description' => 'ERPNext item code used for sync and stock verification.',
         ]);
         if (! empty($itemGroupOptions)) {
             woocommerce_wp_select([
-                'id' => '_snc_erp_item_group',
+                'id' => '_tmwp_erp_item_group',
                 'label' => 'ERP Item Group',
                 'desc_tip' => true,
                 'description' => 'ERPNext item group for export mapping.',
@@ -47,7 +47,7 @@ final class ProductFieldsManager
             ]);
         } else {
             woocommerce_wp_text_input([
-                'id' => '_snc_erp_item_group',
+                'id' => '_tmwp_erp_item_group',
                 'label' => 'ERP Item Group',
                 'desc_tip' => true,
                 'description' => 'ERPNext item group for export mapping.',
@@ -56,7 +56,7 @@ final class ProductFieldsManager
 
         if (! empty($warehouseOptions)) {
             woocommerce_wp_select([
-                'id' => '_snc_erp_warehouse',
+                'id' => '_tmwp_erp_warehouse',
                 'label' => 'ERP Warehouse',
                 'desc_tip' => true,
                 'description' => 'ERPNext warehouse/source for this product.',
@@ -64,7 +64,7 @@ final class ProductFieldsManager
             ]);
         } else {
             woocommerce_wp_text_input([
-                'id' => '_snc_erp_warehouse',
+                'id' => '_tmwp_erp_warehouse',
                 'label' => 'ERP Warehouse',
                 'desc_tip' => true,
                 'description' => 'ERPNext warehouse/source for this product.',
@@ -79,8 +79,8 @@ final class ProductFieldsManager
             return;
         }
 
-        $product->update_meta_data('_snc_erp_item_code', sanitize_text_field((string) ($_POST['_snc_erp_item_code'] ?? '')));
-        $product->update_meta_data('_snc_erp_item_group', sanitize_text_field((string) ($_POST['_snc_erp_item_group'] ?? '')));
-        $product->update_meta_data('_snc_erp_warehouse', sanitize_text_field((string) ($_POST['_snc_erp_warehouse'] ?? '')));
+        $product->update_meta_data('_tmwp_erp_item_code', sanitize_text_field((string) ($_POST['_tmwp_erp_item_code'] ?? '')));
+        $product->update_meta_data('_tmwp_erp_item_group', sanitize_text_field((string) ($_POST['_tmwp_erp_item_group'] ?? '')));
+        $product->update_meta_data('_tmwp_erp_warehouse', sanitize_text_field((string) ($_POST['_tmwp_erp_warehouse'] ?? '')));
     }
 }

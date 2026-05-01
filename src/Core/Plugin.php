@@ -2,23 +2,23 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Core;
+namespace TechnomancerWp\Connector\Core;
 
-use Sinappsus\N8nConnector\Admin\AdminPages;
-use Sinappsus\N8nConnector\Api\RestController;
-use Sinappsus\N8nConnector\Events\EventManager;
-use Sinappsus\N8nConnector\Flows\Dispatcher;
-use Sinappsus\N8nConnector\Flows\FlowRepository;
-use Sinappsus\N8nConnector\Flows\Logger;
-use Sinappsus\N8nConnector\Integrations\Erpnext\Admin\ProfileFieldsManager as ErpnextProfileFieldsManager;
-use Sinappsus\N8nConnector\Integrations\Erpnext\Admin\ProductFieldsManager;
-use Sinappsus\N8nConnector\Integrations\Erpnext\Admin\ProductSyncManager;
-use Sinappsus\N8nConnector\Integrations\Erpnext\Client as ErpnextClient;
-use Sinappsus\N8nConnector\Integrations\Erpnext\Sync\SyncScheduler;
-use Sinappsus\N8nConnector\Integrations\Notifuse\Elementor\WidgetRegistrar;
-use Sinappsus\N8nConnector\Integrations\Notifuse\Client as NotifuseClient;
-use Sinappsus\N8nConnector\Integrations\Notifuse\ProfileManager as NotifuseProfileManager;
-use Sinappsus\N8nConnector\Security\RequestAuthorizer;
+use TechnomancerWp\Connector\Admin\AdminPages;
+use TechnomancerWp\Connector\Api\RestController;
+use TechnomancerWp\Connector\Events\EventManager;
+use TechnomancerWp\Connector\Flows\Dispatcher;
+use TechnomancerWp\Connector\Flows\FlowRepository;
+use TechnomancerWp\Connector\Flows\Logger;
+use TechnomancerWp\Connector\Integrations\Erpnext\Admin\ProfileFieldsManager as ErpnextProfileFieldsManager;
+use TechnomancerWp\Connector\Integrations\Erpnext\Admin\ProductFieldsManager;
+use TechnomancerWp\Connector\Integrations\Erpnext\Admin\ProductSyncManager;
+use TechnomancerWp\Connector\Integrations\Erpnext\Client as ErpnextClient;
+use TechnomancerWp\Connector\Integrations\Erpnext\Sync\SyncScheduler;
+use TechnomancerWp\Connector\Integrations\Notifuse\Elementor\WidgetRegistrar;
+use TechnomancerWp\Connector\Integrations\Notifuse\Client as NotifuseClient;
+use TechnomancerWp\Connector\Integrations\Notifuse\ProfileManager as NotifuseProfileManager;
+use TechnomancerWp\Connector\Security\RequestAuthorizer;
 
 
 final class Plugin
@@ -84,7 +84,7 @@ final class Plugin
         $this->events = new EventManager($this->flows, $this->dispatcher, $this->notifuseClient, $this->erpnextClient);
         $this->adminPages = new AdminPages($this->flows, $this->logger, $this->notifuseClient, $this->erpnextClient);
         $this->restController = new RestController($this->flows, $this->logger, $this->authorizer);
-        $wooCommerceIntegrationClass = '\\Sinappsus\\N8nConnector\\Integrations\\WooCommerce\\WooCommerceIntegration';
+        $wooCommerceIntegrationClass = '\\TechnomancerWp\\Connector\\Integrations\\WooCommerce\\WooCommerceIntegration';
         if (class_exists($wooCommerceIntegrationClass)) {
             $this->wooCommerceIntegration = new $wooCommerceIntegrationClass();
         }
@@ -94,23 +94,23 @@ final class Plugin
     {
         add_action('admin_menu', [$this->adminPages, 'registerMenu']);
         add_action('admin_init', [$this->adminPages, 'registerSettings']);
-        add_action('admin_post_snc_save_flow', [$this->adminPages, 'saveFlow']);
-        add_action('admin_post_snc_delete_flow', [$this->adminPages, 'deleteFlow']);
-        add_action('admin_post_snc_test_notifuse', [$this->adminPages, 'testNotifuse']);
-        add_action('admin_post_snc_test_erpnext', [$this->adminPages, 'testErpnext']);
-        add_action('admin_post_snc_replay_log', [$this->adminPages, 'replayLog']);
-        add_action('admin_post_snc_send_test_flow', [$this->adminPages, 'sendTestFlow']);
-        add_action('admin_post_snc_erp_import_products', [$this->productSyncManager, 'importProducts']);
-        add_action('admin_post_snc_erp_export_product', [$this->productSyncManager, 'exportProduct']);
-        add_action('admin_post_snc_erp_verify_stock', [$this->productSyncManager, 'verifyStock']);
-        add_action('admin_post_snc_erp_run_product_sync', [$this->productSyncManager, 'runProductSync']);
-        add_action('admin_post_snc_erp_run_stock_sync', [$this->productSyncManager, 'runStockSync']);
-        add_action('admin_post_snc_test_erp_contracts', [$this->adminPages, 'testErpContracts']);
-        add_action('admin_post_snc_clear_logs', [$this->adminPages, 'clearLogs']);
+        add_action('admin_post_tmwp_save_flow', [$this->adminPages, 'saveFlow']);
+        add_action('admin_post_tmwp_delete_flow', [$this->adminPages, 'deleteFlow']);
+        add_action('admin_post_tmwp_test_notifuse', [$this->adminPages, 'testNotifuse']);
+        add_action('admin_post_tmwp_test_erpnext', [$this->adminPages, 'testErpnext']);
+        add_action('admin_post_tmwp_replay_log', [$this->adminPages, 'replayLog']);
+        add_action('admin_post_tmwp_send_test_flow', [$this->adminPages, 'sendTestFlow']);
+        add_action('admin_post_tmwp_erp_import_products', [$this->productSyncManager, 'importProducts']);
+        add_action('admin_post_tmwp_erp_export_product', [$this->productSyncManager, 'exportProduct']);
+        add_action('admin_post_tmwp_erp_verify_stock', [$this->productSyncManager, 'verifyStock']);
+        add_action('admin_post_tmwp_erp_run_product_sync', [$this->productSyncManager, 'runProductSync']);
+        add_action('admin_post_tmwp_erp_run_stock_sync', [$this->productSyncManager, 'runStockSync']);
+        add_action('admin_post_tmwp_test_erp_contracts', [$this->adminPages, 'testErpContracts']);
+        add_action('admin_post_tmwp_clear_logs', [$this->adminPages, 'clearLogs']);
 
         add_action('rest_api_init', [$this->restController, 'registerRoutes']);
 
-        add_action('sinappsus_n8n_process_delivery', [$this->dispatcher, 'processDelivery'], 10, 2);
+        add_action('tmwp_process_delivery', [$this->dispatcher, 'processDelivery'], 10, 2);
 
         $this->notifuseProfileManager->register();
         $this->erpnextProfileFieldsManager->register();

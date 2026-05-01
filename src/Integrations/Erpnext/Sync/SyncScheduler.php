@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Integrations\Erpnext\Sync;
+namespace TechnomancerWp\Connector\Integrations\Erpnext\Sync;
 
-use Sinappsus\N8nConnector\Core\Settings;
-use Sinappsus\N8nConnector\Flows\Logger;
-use Sinappsus\N8nConnector\Integrations\Erpnext\Client;
+use TechnomancerWp\Connector\Core\Settings;
+use TechnomancerWp\Connector\Flows\Logger;
+use TechnomancerWp\Connector\Integrations\Erpnext\Client;
 
 final class SyncScheduler
 {
@@ -24,13 +24,13 @@ final class SyncScheduler
     {
         add_filter('cron_schedules', [$this, 'cronSchedules']);
         add_action('init', [$this, 'ensureSchedules']);
-        add_action('snc_erp_sync_products', [$this, 'syncProducts']);
-        add_action('snc_erp_sync_stock', [$this, 'syncStock']);
+        add_action('tmwp_erp_sync_products', [$this, 'syncProducts']);
+        add_action('tmwp_erp_sync_stock', [$this, 'syncStock']);
     }
 
     public function cronSchedules(array $schedules): array
     {
-        $schedules['snc_every_fifteen_minutes'] = [
+        $schedules['tmwp_every_fifteen_minutes'] = [
             'interval' => 15 * MINUTE_IN_SECONDS,
             'display' => 'Every 15 Minutes',
         ];
@@ -43,11 +43,11 @@ final class SyncScheduler
         $settings = Settings::get('erpnext', []);
         $interval = (string) ($settings['sync_interval'] ?? 'hourly');
         if ($interval === '15min') {
-            $interval = 'snc_every_fifteen_minutes';
+            $interval = 'tmwp_every_fifteen_minutes';
         }
 
-        $this->ensureEvent('snc_erp_sync_products', ! empty($settings['sync_products']), $interval);
-        $this->ensureEvent('snc_erp_sync_stock', ! empty($settings['sync_stock']), $interval);
+        $this->ensureEvent('tmwp_erp_sync_products', ! empty($settings['sync_products']), $interval);
+        $this->ensureEvent('tmwp_erp_sync_stock', ! empty($settings['sync_stock']), $interval);
     }
 
     public function syncProducts(): void

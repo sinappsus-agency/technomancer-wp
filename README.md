@@ -13,11 +13,9 @@ Technomancer WP is a WordPress automation plugin that connects WordPress and Woo
 
 ## API Namespace
 
-The REST route namespace currently remains:
+The REST route namespace is:
 
-- `/wp-json/sinappsus-n8n/v1`
-
-This is intentionally preserved for compatibility with existing automations.
+- `/wp-json/technomancer-wp/v1`
 
 ## Automated Updates
 
@@ -35,23 +33,23 @@ Update bootstrap is implemented in `src/Core/Updater.php`.
 ### Updater Filters
 
 ```php
-add_filter('snc_update_metadata_url', static function () {
+add_filter('tmwp_update_metadata_url', static function () {
   return ''; // Optional JSON manifest endpoint.
 });
 
-add_filter('snc_update_source', static function () {
+add_filter('tmwp_update_source', static function () {
   return 'https://github.com/sinappsus-agency/technomancer-wp/';
 });
 
-add_filter('snc_update_branch', static function () {
+add_filter('tmwp_update_branch', static function () {
   return 'main';
 });
 
-add_filter('snc_update_slug', static function () {
+add_filter('tmwp_update_slug', static function () {
   return 'technomancer-wp';
 });
 
-add_filter('snc_update_token', static function () {
+add_filter('tmwp_update_token', static function () {
   return ''; // Required for private repositories.
 });
 ```
@@ -89,7 +87,7 @@ ZIP artifact naming:
 
 ## Release Process
 
-1. Bump plugin header `Version` in `sinappsus-n8n-connector.php`
+1. Bump plugin header `Version` in `technomancer-wp.php`
 2. Commit and push to `main`
 3. Confirm workflow success in GitHub Actions
 4. Confirm release `v{version}` includes ZIP asset

@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Api;
+namespace TechnomancerWp\Connector\Api;
 
-use Sinappsus\N8nConnector\Core\Settings;
-use Sinappsus\N8nConnector\Events\EventRegistry;
-use Sinappsus\N8nConnector\Flows\FlowRepository;
-use Sinappsus\N8nConnector\Flows\Logger;
-use Sinappsus\N8nConnector\Security\RequestAuthorizer;
+use TechnomancerWp\Connector\Core\Settings;
+use TechnomancerWp\Connector\Events\EventRegistry;
+use TechnomancerWp\Connector\Flows\FlowRepository;
+use TechnomancerWp\Connector\Flows\Logger;
+use TechnomancerWp\Connector\Security\RequestAuthorizer;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -30,49 +30,49 @@ final class RestController
 
     public function registerRoutes(): void
     {
-        register_rest_route('sinappsus-n8n/v1', '/health', [
+        register_rest_route('technomancer-wp/v1', '/health', [
             'methods' => 'GET',
             'callback' => [$this, 'health'],
             'permission_callback' => '__return_true',
         ]);
 
-        register_rest_route('sinappsus-n8n/v1', '/events', [
+        register_rest_route('technomancer-wp/v1', '/events', [
             'methods' => 'GET',
             'callback' => [$this, 'events'],
             'permission_callback' => [$this, 'canManage'],
         ]);
 
-        register_rest_route('sinappsus-n8n/v1', '/flows', [
+        register_rest_route('technomancer-wp/v1', '/flows', [
             'methods' => 'GET',
             'callback' => [$this, 'flows'],
             'permission_callback' => [$this, 'canManage'],
         ]);
 
-        register_rest_route('sinappsus-n8n/v1', '/logs', [
+        register_rest_route('technomancer-wp/v1', '/logs', [
             'methods' => 'GET',
             'callback' => [$this, 'logs'],
             'permission_callback' => [$this, 'canManage'],
         ]);
 
-        register_rest_route('sinappsus-n8n/v1', '/entity/(?P<type>[a-z_-]+)/(?P<id>\d+)', [
+        register_rest_route('technomancer-wp/v1', '/entity/(?P<type>[a-z_-]+)/(?P<id>\d+)', [
             'methods' => 'GET',
             'callback' => [$this, 'entity'],
             'permission_callback' => [$this, 'authorizeN8nRequest'],
         ]);
 
-        register_rest_route('sinappsus-n8n/v1', '/search', [
+        register_rest_route('technomancer-wp/v1', '/search', [
             'methods' => 'GET',
             'callback' => [$this, 'search'],
             'permission_callback' => [$this, 'authorizeN8nRequest'],
         ]);
 
-        register_rest_route('sinappsus-n8n/v1', '/action/meta', [
+        register_rest_route('technomancer-wp/v1', '/action/meta', [
             'methods' => 'POST',
             'callback' => [$this, 'updateMeta'],
             'permission_callback' => [$this, 'authorizeN8nRequest'],
         ]);
 
-        register_rest_route('sinappsus-n8n/v1', '/action/order-note', [
+        register_rest_route('technomancer-wp/v1', '/action/order-note', [
             'methods' => 'POST',
             'callback' => [$this, 'addOrderNote'],
             'permission_callback' => [$this, 'authorizeN8nRequest'],
@@ -82,8 +82,8 @@ final class RestController
     public function health(): WP_REST_Response
     {
         return new WP_REST_Response([
-            'plugin' => 'SINAPPSUS n8n Connector',
-            'version' => SINAPPSUS_N8N_CONNECTOR_VERSION,
+            'plugin' => 'Technomancer WP',
+            'version' => TECHNOMANCER_WP_VERSION,
             'woocommerce_active' => class_exists('WooCommerce'),
         ]);
     }
@@ -127,22 +127,22 @@ final class RestController
                 'user_email' => $user->user_email,
                 'display_name' => $user->display_name,
                 'roles' => $user->roles,
-            ]) : new WP_Error('snc_not_found', 'User not found.', ['status' => 404]);
+            ]) : new WP_Error('tmwp_not_found', 'User not found.', ['status' => 404]);
         }
 
         if ($type === 'post' || $type === 'page' || $type === 'attachment') {
             $post = get_post($id);
 
-            return $post ? new WP_REST_Response($post) : new WP_Error('snc_not_found', 'Post not found.', ['status' => 404]);
+            return $post ? new WP_REST_Response($post) : new WP_Error('tmwp_not_found', 'Post not found.', ['status' => 404]);
         }
 
         if ($type === 'order' && function_exists('wc_get_order')) {
             $order = wc_get_order($id);
 
-            return $order ? new WP_REST_Response($order->get_data()) : new WP_Error('snc_not_found', 'Order not found.', ['status' => 404]);
+            return $order ? new WP_REST_Response($order->get_data()) : new WP_Error('tmwp_not_found', 'Order not found.', ['status' => 404]);
         }
 
-        return new WP_Error('snc_invalid_type', 'Entity type not supported.', ['status' => 400]);
+        return new WP_Error('tmwp_invalid_type', 'Entity type not supported.', ['status' => 400]);
     }
 
     public function search(WP_REST_Request $request)
@@ -185,7 +185,7 @@ final class RestController
             return new WP_REST_Response($result);
         }
 
-        return new WP_Error('snc_invalid_search_type', 'Search type not supported.', ['status' => 400]);
+        return new WP_Error('tmwp_invalid_search_type', 'Search type not supported.', ['status' => 400]);
     }
 
     public function updateMeta(WP_REST_Request $request)
@@ -196,7 +196,7 @@ final class RestController
         $metaValue = $request->get_param('meta_value');
 
         if (! in_array($entityType, ['user', 'post', 'order'], true)) {
-            return new WP_Error('snc_invalid_type', 'Write target not allowed.', ['status' => 400]);
+            return new WP_Error('tmwp_invalid_type', 'Write target not allowed.', ['status' => 400]);
         }
 
         if ($entityType === 'user') {
@@ -209,13 +209,13 @@ final class RestController
 
         if ($entityType === 'order') {
             if (! function_exists('wc_get_order')) {
-                return new WP_Error('snc_wc_missing', 'WooCommerce is not active.', ['status' => 400]);
+                return new WP_Error('tmwp_wc_missing', 'WooCommerce is not active.', ['status' => 400]);
             }
 
             $order = wc_get_order($entityId);
 
             if (! $order) {
-                return new WP_Error('snc_not_found', 'Order not found.', ['status' => 404]);
+                return new WP_Error('tmwp_not_found', 'Order not found.', ['status' => 404]);
             }
 
             $order->update_meta_data($metaKey, $metaValue);
@@ -236,7 +236,7 @@ final class RestController
     public function addOrderNote(WP_REST_Request $request)
     {
         if (! function_exists('wc_get_order')) {
-            return new WP_Error('snc_wc_missing', 'WooCommerce is not active.', ['status' => 400]);
+            return new WP_Error('tmwp_wc_missing', 'WooCommerce is not active.', ['status' => 400]);
         }
 
         $orderId = (int) $request->get_param('order_id');
@@ -245,7 +245,7 @@ final class RestController
         $order = wc_get_order($orderId);
 
         if (! $order) {
-            return new WP_Error('snc_not_found', 'Order not found.', ['status' => 404]);
+            return new WP_Error('tmwp_not_found', 'Order not found.', ['status' => 404]);
         }
 
         $order->add_order_note($note, $isCustomerNote);

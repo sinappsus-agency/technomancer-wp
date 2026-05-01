@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Core;
+namespace TechnomancerWp\Connector\Core;
 
 final class Settings
 {
     public static function all(): array
     {
-        $settings = get_option('snc_settings', []);
+        $settings = get_option('tmwp_settings', []);
 
         return is_array($settings) ? $settings : [];
     }
@@ -22,6 +22,6 @@ final class Settings
 
     public static function update(array $settings): void
     {
-        update_option('snc_settings', $settings);
+        update_option('tmwp_settings', $settings);
     }
 }

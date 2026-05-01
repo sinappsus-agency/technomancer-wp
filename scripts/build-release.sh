@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PLUGIN_FILE="${ROOT_DIR}/sinappsus-n8n-connector.php"
+PLUGIN_FILE="${ROOT_DIR}/technomancer-wp.php"
 PLUGIN_SLUG="technomancer-wp"
 DIST_DIR="${ROOT_DIR}/dist"
 
@@ -46,3 +46,4 @@ fi
 
 echo "version=${VERSION}"
 echo "zip_path=${ZIP_PATH}"
+

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Sinappsus\N8nConnector\Integrations\Erpnext;
+namespace TechnomancerWp\Connector\Integrations\Erpnext;
 
-use Sinappsus\N8nConnector\Core\Settings;
-use Sinappsus\N8nConnector\Flows\Logger;
+use TechnomancerWp\Connector\Core\Settings;
+use TechnomancerWp\Connector\Flows\Logger;
 
 final class Client
 {
@@ -182,9 +182,9 @@ final class Client
         }
 
         $customerId = $order->get_customer_id();
-        $customerGroup = $customerId > 0 ? (string) get_user_meta($customerId, 'snc_erp_customer_group', true) : '';
-        $territory = $customerId > 0 ? (string) get_user_meta($customerId, 'snc_erp_territory', true) : '';
-        $customerName = $customerId > 0 ? (string) get_user_meta($customerId, 'snc_erp_customer_name', true) : '';
+        $customerGroup = $customerId > 0 ? (string) get_user_meta($customerId, 'tmwp_erp_customer_group', true) : '';
+        $territory = $customerId > 0 ? (string) get_user_meta($customerId, 'tmwp_erp_territory', true) : '';
+        $customerName = $customerId > 0 ? (string) get_user_meta($customerId, 'tmwp_erp_customer_name', true) : '';
         $user = $customerId > 0 ? get_user_by('id', $customerId) : false;
 
         $source = [
@@ -245,8 +245,8 @@ final class Client
             $customerId > 0 ? [
                 'entity_type' => 'user',
                 'entity_id' => $customerId,
-                'hash_key' => 'snc_erp_customer_sync_hash',
-                'docname_key' => 'snc_erp_customer_docname',
+                'hash_key' => 'tmwp_erp_customer_sync_hash',
+                'docname_key' => 'tmwp_erp_customer_docname',
             ] : null
         , true);
 
@@ -313,8 +313,8 @@ final class Client
             [
                 'entity_type' => 'post',
                 'entity_id' => $order->get_id(),
-                'hash_key' => '_snc_erp_sales_order_sync_hash',
-                'docname_key' => '_snc_erp_sales_order_docname',
+                'hash_key' => '_tmwp_erp_sales_order_sync_hash',
+                'docname_key' => '_tmwp_erp_sales_order_docname',
             ]
         );
     }
@@ -417,12 +417,12 @@ final class Client
                 }
 
                 $imageUrl = $this->buildErpAssetUrl((string) ($item['image'] ?? ''));
-                update_post_meta($productId, '_snc_erp_item_code', $itemCode);
-                update_post_meta($productId, '_snc_erp_item_docname', sanitize_text_field((string) ($item['name'] ?? $itemCode)));
-                update_post_meta($productId, '_snc_erp_item_group', sanitize_text_field((string) ($item['item_group'] ?? (string) ($settings['item_group'] ?? ''))));
-                update_post_meta($productId, '_snc_erp_warehouse', sanitize_text_field((string) ($item['default_warehouse'] ?? (string) ($settings['warehouse'] ?? ''))));
-                update_post_meta($productId, '_snc_erp_stock_uom', sanitize_text_field((string) ($item['stock_uom'] ?? '')));
-                update_post_meta($productId, '_snc_erp_image', esc_url_raw($imageUrl));
+                update_post_meta($productId, '_tmwp_erp_item_code', $itemCode);
+                update_post_meta($productId, '_tmwp_erp_item_docname', sanitize_text_field((string) ($item['name'] ?? $itemCode)));
+                update_post_meta($productId, '_tmwp_erp_item_group', sanitize_text_field((string) ($item['item_group'] ?? (string) ($settings['item_group'] ?? ''))));
+                update_post_meta($productId, '_tmwp_erp_warehouse', sanitize_text_field((string) ($item['default_warehouse'] ?? (string) ($settings['warehouse'] ?? ''))));
+                update_post_meta($productId, '_tmwp_erp_stock_uom', sanitize_text_field((string) ($item['stock_uom'] ?? '')));
+                update_post_meta($productId, '_tmwp_erp_image', esc_url_raw($imageUrl));
                 if ($imageUrl !== '') {
                     $attachmentId = $this->ensureImportedProductImage($productId, $imageUrl, (string) ($item['item_name'] ?? $itemCode));
                     if ($attachmentId > 0) {
@@ -446,7 +446,7 @@ final class Client
         }
 
         $source = [
-            'erp_item_code' => (string) get_post_meta($productId, '_snc_erp_item_code', true) ?: ($product->get_sku() ?: (string) $product->get_id()),
+            'erp_item_code' => (string) get_post_meta($productId, '_tmwp_erp_item_code', true) ?: ($product->get_sku() ?: (string) $product->get_id()),
             'name' => $product->get_name(),
             'sku' => $product->get_sku(),
             'slug' => $product->get_slug(),
@@ -473,8 +473,8 @@ final class Client
             'tag_ids' => implode(',', $product->get_tag_ids()),
             'tag_names' => implode(', ', $this->getTermNames($productId, 'product_tag')),
             'permalink' => get_permalink($productId) ?: '',
-            'erp_item_group' => (string) get_post_meta($productId, '_snc_erp_item_group', true) ?: (string) ($settings['item_group'] ?? ''),
-            'erp_warehouse' => (string) get_post_meta($productId, '_snc_erp_warehouse', true) ?: (string) ($settings['warehouse'] ?? ''),
+            'erp_item_group' => (string) get_post_meta($productId, '_tmwp_erp_item_group', true) ?: (string) ($settings['item_group'] ?? ''),
+            'erp_warehouse' => (string) get_post_meta($productId, '_tmwp_erp_warehouse', true) ?: (string) ($settings['warehouse'] ?? ''),
             'wp_product_id' => $product->get_id(),
         ];
 
@@ -504,8 +504,8 @@ final class Client
             [
                 'entity_type' => 'post',
                 'entity_id' => $product->get_id(),
-                'hash_key' => '_snc_erp_item_sync_hash',
-                'docname_key' => '_snc_erp_item_docname',
+                'hash_key' => '_tmwp_erp_item_sync_hash',
+                'docname_key' => '_tmwp_erp_item_docname',
             ],
             true
         ) ?? ['success' => false, 'message' => 'ERPNext export failed.'];
@@ -520,9 +520,9 @@ final class Client
         }
 
         $sku = $product->get_sku() ?: (string) $product->get_id();
-        $erpItemCode = (string) get_post_meta($productId, '_snc_erp_item_code', true);
+        $erpItemCode = (string) get_post_meta($productId, '_tmwp_erp_item_code', true);
         $settings = Settings::get('erpnext', []);
-        $warehouse = (string) get_post_meta($productId, '_snc_erp_warehouse', true) ?: (string) ($settings['warehouse'] ?? '');
+        $warehouse = (string) get_post_meta($productId, '_tmwp_erp_warehouse', true) ?: (string) ($settings['warehouse'] ?? '');
         $erpStock = $this->fetchStockQuantity($erpItemCode !== '' ? $erpItemCode : $sku, $warehouse);
         $wooStock = (string) $product->get_stock_quantity();
 
@@ -554,7 +554,7 @@ final class Client
                 continue;
             }
 
-            $warehouse = (string) get_post_meta($productId, '_snc_erp_warehouse', true) ?: $defaultWarehouse;
+            $warehouse = (string) get_post_meta($productId, '_tmwp_erp_warehouse', true) ?: $defaultWarehouse;
             $stockQty = $this->fetchStockQuantity($itemCode, $warehouse);
             if ($stockQty === null) {
                 continue;
@@ -670,8 +670,8 @@ final class Client
             $customerId > 0 ? [
                 'entity_type' => 'user',
                 'entity_id' => $customerId,
-                'hash_key' => 'snc_erp_contact_sync_hash',
-                'docname_key' => 'snc_erp_contact_docname',
+                'hash_key' => 'tmwp_erp_contact_sync_hash',
+                'docname_key' => 'tmwp_erp_contact_docname',
             ] : null
         );
     }
@@ -709,8 +709,8 @@ final class Client
             $customerId > 0 ? [
                 'entity_type' => 'user',
                 'entity_id' => $customerId,
-                'hash_key' => 'snc_erp_address_sync_hash',
-                'docname_key' => 'snc_erp_address_docname',
+                'hash_key' => 'tmwp_erp_address_sync_hash',
+                'docname_key' => 'tmwp_erp_address_docname',
             ] : null
         );
     }
@@ -775,14 +775,14 @@ final class Client
         }
 
         $existingThumbnailId = (int) get_post_thumbnail_id($productId);
-        $existingSource = (string) get_post_meta($productId, '_snc_erp_image_source', true);
+        $existingSource = (string) get_post_meta($productId, '_tmwp_erp_image_source', true);
         if ($existingThumbnailId > 0 && $existingSource !== '' && hash_equals($existingSource, $imageUrl)) {
             return $existingThumbnailId;
         }
 
         $existingAttachmentId = $this->findAttachmentBySourceUrl($imageUrl);
         if ($existingAttachmentId > 0) {
-            update_post_meta($productId, '_snc_erp_image_source', $imageUrl);
+            update_post_meta($productId, '_tmwp_erp_image_source', $imageUrl);
 
             return $existingAttachmentId;
         }
@@ -800,8 +800,8 @@ final class Client
 
         $attachmentId = (int) $attachmentId;
         if ($attachmentId > 0) {
-            update_post_meta($attachmentId, '_snc_erp_source_url', $imageUrl);
-            update_post_meta($productId, '_snc_erp_image_source', $imageUrl);
+            update_post_meta($attachmentId, '_tmwp_erp_source_url', $imageUrl);
+            update_post_meta($productId, '_tmwp_erp_image_source', $imageUrl);
         }
 
         return $attachmentId;
@@ -815,7 +815,7 @@ final class Client
             'posts_per_page' => 1,
             'fields' => 'ids',
             'meta_query' => [[
-                'key' => '_snc_erp_source_url',
+                'key' => '_tmwp_erp_source_url',
                 'value' => $imageUrl,
             ]],
         ]);
