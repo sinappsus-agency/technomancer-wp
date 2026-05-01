@@ -37,7 +37,7 @@ final class Updater
             return;
         }
 
-        $slug = (string) apply_filters('snc_update_slug', 'sinappsus-n8n-connector');
+        $slug = (string) apply_filters('snc_update_slug', 'technomancer-wp');
         $branch = (string) apply_filters('snc_update_branch', 'main');
         $token = trim((string) apply_filters('snc_update_token', ''));
 

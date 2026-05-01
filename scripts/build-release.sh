@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PLUGIN_FILE="${ROOT_DIR}/sinappsus-n8n-connector.php"
-PLUGIN_SLUG="sinappsus-n8n-connector"
+PLUGIN_SLUG="technomancer-wp"
 DIST_DIR="${ROOT_DIR}/dist"
 
 if [[ ! -f "${PLUGIN_FILE}" ]]; then

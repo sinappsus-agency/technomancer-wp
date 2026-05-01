@@ -1,14 +1,14 @@
 <?php
 /**
- * Plugin Name: SINAPPSUS n8n Connector
- * Plugin URI: https://sinappsus.com/
+ * Plugin Name: Technomancer WP
+ * Plugin URI: https://github.com/sinappsus-agency/technomancer-wp
  * Description: Multi-flow WordPress and WooCommerce automation plugin for n8n, Notifuse, and ERPNext.
  * Version: 0.1.0
  * Requires at least: 6.0
  * Requires PHP: 8.0
  * Author: SINAPPSUS
  * License: GPL-2.0-or-later
- * Text Domain: sinappsus-n8n-connector
+ * Text Domain: technomancer-wp
  */
 
 declare(strict_types=1);
